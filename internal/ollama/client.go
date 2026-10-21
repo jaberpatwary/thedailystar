@@ -28,6 +28,17 @@ func New(baseURL, embedModel, chatModel string) *Client {
 	}
 }
 
+// IsAvailable performs a short health check before a potentially long re-index.
+func (c *Client) IsAvailable() bool {
+	probe := &http.Client{Timeout: 2 * time.Second}
+	resp, err := probe.Get(c.BaseURL + "/api/tags")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 type embedRequest struct {
 	Model  string `json:"model"`
 	Prompt string `json:"prompt"`
