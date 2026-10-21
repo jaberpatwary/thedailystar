@@ -1,0 +1,5 @@
+.env
+*.exe
+*.exe~
+data/*.csv
+data/employees_index.json
