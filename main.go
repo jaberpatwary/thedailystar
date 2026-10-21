@@ -71,10 +71,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load cached index: %v", err)
 	}
-	if !loaded || st.NeedsRebuild(csvPath) {
+	if !loaded {
 		log.Println("no cached index found, building from CSV (this calls Ollama once per employee)...")
 		if err := st.BuildFromCSV(csvPath, client); err != nil {
 			log.Fatalf("failed to build index from CSV: %v", err)
+		}
+	} else if st.NeedsRebuild(csvPath) {
+		log.Println("CSV is newer than the cached index; rebuilding embeddings...")
+		if err := st.BuildFromCSV(csvPath, client); err != nil {
+			log.Printf("re-index skipped because Ollama is unavailable; serving the existing cached directory: %v", err)
 		}
 	}
 	log.Printf("ready: %d employees indexed", st.Count())
