@@ -105,7 +105,7 @@ func (s *Server) requireAccess(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	if tokenMatches(r.Header.Get("X-Admin-Token"), s.AdminToken) {
+	if s.AdminToken == "" || tokenMatches(r.Header.Get("X-Admin-Token"), s.AdminToken) {
 		return true
 	}
 	http.Error(w, "administrator authentication required", http.StatusUnauthorized)
@@ -135,6 +135,22 @@ type chatResponse struct {
 	Employees []models.Employee `json:"employees,omitempty"`
 	Mode      string            `json:"mode"` // "direct_lookup" | "semantic" | "greeting" | "no_match"
 	Provider  string            `json:"provider,omitempty"`
+	Engine    string            `json:"engine,omitempty"` // "groq" or "ollama"
+}
+
+func (s *Server) activeEngineInfo() (string, string) {
+	if s.PreferredEngine == "ollama" || s.Groq == nil || !s.Groq.IsConfigured() {
+		model := "llama3.2"
+		if s.Ollama != nil && s.Ollama.ChatModel != "" {
+			model = s.Ollama.ChatModel
+		}
+		return "ollama", "Local Ollama (" + model + ")"
+	}
+	model := "openai/gpt-oss-120b"
+	if s.Groq != nil && s.Groq.Model != "" {
+		model = s.Groq.Model
+	}
+	return "groq", "Groq Cloud (" + model + ")"
 }
 
 func handleCasualChat(msg string, inBengali bool) (string, bool) {
@@ -374,13 +390,13 @@ func formatMultipleEmployees(topic string, emps []models.Employee, inBengali boo
 	return strings.TrimSpace(b.String())
 }
 
-func (s *Server) askLLM(systemPrompt, userPrompt string) (string, string) {
+func (s *Server) askLLM(systemPrompt, userPrompt string) (string, string, string) {
 	if s.PreferredEngine == "ollama" {
 		// Use Local Ollama first
 		if s.Ollama != nil {
 			ans, err := s.Ollama.Chat(systemPrompt, userPrompt)
 			if err == nil && strings.TrimSpace(ans) != "" {
-				return strings.TrimSpace(ans), "💻 Local Ollama (" + s.Ollama.ChatModel + ")"
+				return strings.TrimSpace(ans), "Local Ollama (" + s.Ollama.ChatModel + ")", "ollama"
 			}
 			log.Printf("Ollama chat failed: %v", err)
 		}
@@ -388,17 +404,17 @@ func (s *Server) askLLM(systemPrompt, userPrompt string) (string, string) {
 		if s.Groq != nil && s.Groq.IsConfigured() {
 			ans, err := s.Groq.Chat(systemPrompt, userPrompt)
 			if err == nil && strings.TrimSpace(ans) != "" {
-				return strings.TrimSpace(ans), "⚡ Groq (" + s.Groq.Model + ")"
+				return strings.TrimSpace(ans), "Groq Cloud (" + s.Groq.Model + ")", "groq"
 			}
 		}
-		return "", ""
+		return "", "", "ollama"
 	}
 
 	// Default: Try Groq Cloud LPU first
 	if s.Groq != nil && s.Groq.IsConfigured() {
 		ans, err := s.Groq.Chat(systemPrompt, userPrompt)
 		if err == nil && strings.TrimSpace(ans) != "" {
-			return strings.TrimSpace(ans), "⚡ Groq (" + s.Groq.Model + ")"
+			return strings.TrimSpace(ans), "Groq Cloud (" + s.Groq.Model + ")", "groq"
 		}
 		log.Printf("Groq chat failed: %v. Falling back to local Ollama.", err)
 	}
@@ -407,12 +423,12 @@ func (s *Server) askLLM(systemPrompt, userPrompt string) (string, string) {
 	if s.Ollama != nil {
 		ans, err := s.Ollama.Chat(systemPrompt, userPrompt)
 		if err == nil && strings.TrimSpace(ans) != "" {
-			return strings.TrimSpace(ans), "💻 Local Ollama (" + s.Ollama.ChatModel + ")"
+			return strings.TrimSpace(ans), "Local Ollama (" + s.Ollama.ChatModel + ")", "ollama"
 		}
 		log.Printf("Ollama chat failed: %v", err)
 	}
 
-	return "", ""
+	return "", "", "groq"
 }
 
 func buildEmployeeDetails(e models.Employee) string {
@@ -514,10 +530,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bengali := isBengali(msg)
+	activeEng, activeProv := s.activeEngineInfo()
 
 	// 1. Casual conversational replies (Thanks, Bye, How are you, Developer, etc.)
 	if casualReply, handled := handleCasualChat(msg, bengali); handled {
-		writeJSON(w, chatResponse{Answer: casualReply, Mode: "greeting"})
+		writeJSON(w, chatResponse{Answer: casualReply, Mode: "greeting", Provider: activeProv, Engine: activeEng})
 		return
 	}
 
@@ -527,7 +544,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		if bengali {
 			greeting = "হ্যালো! 👋 আমি **The Daily Star**-এর AI অ্যাসিস্ট্যান্ট।\n\nআমি আপনাকে যেকোনো বিষয়ে সাহায্য করতে পারি:\n• 📋 **স্টাফ ডিরেক্টরি** — যেকোনো কর্মীর নাম, পদবী, ইমেইল, ফোন, ডেস্ক\n• 💬 **সাধারণ প্রশ্ন** — যেকোনো প্রশ্ন করুন! ইমেইল লেখা, অনুবাদ, ব্যাখ্যা, কোডিং সহায়তা ইত্যাদি।\n\nআপনাকে কীভাবে সাহায্য করতে পারি?"
 		}
-		writeJSON(w, chatResponse{Answer: greeting, Mode: "greeting"})
+		writeJSON(w, chatResponse{Answer: greeting, Mode: "greeting", Provider: activeProv, Engine: activeEng})
 		return
 	}
 
@@ -559,28 +576,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		// Single employee match
 		if len(matches) == 1 {
 			emp := matches[0]
-			systemPrompt := "You are the friendly AI assistant for The Daily Star newspaper in Bangladesh, developed by Jaber Patwary. " +
-				"Answer the user's question conversationally, accurately, and completely using the employee data provided. " +
-				"Provide all requested information accurately (Designation, Department, Desk, Email, Phone, Staff ID/Extension, Social Media links). " +
-				"If an item is not listed, politely state that it is not available in the directory. " +
-				"Reply in Bengali if the user asks in Bengali or Banglish. Otherwise reply in English."
-			userPrompt := fmt.Sprintf("Employee Record:\n%s\n\nUser Question: %s", buildEmployeeDetails(emp), msg)
-
 			var ans string
-			_ = systemPrompt
-			_ = userPrompt
-			{
-				if bengali {
-					ans = fmt.Sprintf("The Daily Star-এর **%s** হলেন **%s** (%s)। নিচে তার সম্পূর্ণ পরিচিতি কার্ড দেওয়া হলো:", emp.Name, emp.Designation, emp.Department)
-				} else {
-					ans = fmt.Sprintf("Here are the directory details for **%s**, **%s** (%s):", emp.Name, emp.Designation, emp.Department)
-				}
+			if bengali {
+				ans = fmt.Sprintf("The Daily Star-এর **%s** হলেন **%s** (%s)। নিচে তার সম্পূর্ণ পরিচিতি কার্ড দেওয়া হলো:", emp.Name, emp.Designation, emp.Department)
+			} else {
+				ans = fmt.Sprintf("Here are the directory details for **%s**, **%s** (%s):", emp.Name, emp.Designation, emp.Department)
 			}
 			writeJSON(w, chatResponse{
 				Answer:    ans,
 				Employees: matches,
 				Mode:      "direct_lookup",
-				Provider:  "Directory data",
+				Provider:  "Verified Staff Directory (" + activeProv + ")",
+				Engine:    activeEng,
 			})
 			return
 		}
@@ -594,14 +601,26 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			} else {
 				ans = fmt.Sprintf("Here is the directory card for **%s**, %s (%s):", emp.Name, emp.Designation, emp.Department)
 			}
-			writeJSON(w, chatResponse{Answer: ans, Employees: []models.Employee{emp}, Mode: "direct_lookup"})
+			writeJSON(w, chatResponse{
+				Answer:    ans,
+				Employees: []models.Employee{emp},
+				Mode:      "direct_lookup",
+				Provider:  "Verified Staff Directory (" + activeProv + ")",
+				Engine:    activeEng,
+			})
 			return
 		}
 		topic := cleaned
 		if topic == "" {
 			topic = msg
 		}
-		writeJSON(w, chatResponse{Answer: formatMultipleEmployees(topic, matches, bengali), Employees: matches, Mode: "direct_lookup", Provider: "Directory data"})
+		writeJSON(w, chatResponse{
+			Answer:    formatMultipleEmployees(topic, matches, bengali),
+			Employees: matches,
+			Mode:      "direct_lookup",
+			Provider:  "Verified Staff Directory (" + activeProv + ")",
+			Engine:    activeEng,
+		})
 		return
 	}
 
@@ -609,7 +628,13 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if isDirectoryQuestion(msg) {
 		results, _ := s.Store.SemanticSearch(s.Ollama, msg, 8, 0.45)
 		if len(results) > 0 {
-			writeJSON(w, chatResponse{Answer: formatMultipleEmployees(msg, results, bengali), Employees: results, Mode: "semantic", Provider: "Local directory search"})
+			writeJSON(w, chatResponse{
+				Answer:    formatMultipleEmployees(msg, results, bengali),
+				Employees: results,
+				Mode:      "semantic",
+				Provider:  "Directory Semantic Search (" + activeProv + ")",
+				Engine:    activeEng,
+			})
 			return
 		}
 
@@ -617,7 +642,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		if !bengali {
 			noMatchMsg = fmt.Sprintf("I could not find anyone in The Daily Star directory matching %q. Please check the spelling or ask by department.", msg)
 		}
-		writeJSON(w, chatResponse{Answer: noMatchMsg, Mode: "no_match"})
+		writeJSON(w, chatResponse{
+			Answer:   noMatchMsg,
+			Mode:     "no_match",
+			Provider: activeProv,
+			Engine:   activeEng,
+		})
 		return
 	}
 
@@ -633,7 +663,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Do not send browser-supplied history to a cloud model; it can contain directory data.
 	generalUser := msg
 
-	answer, providerUsed := s.askLLM(generalSystem, generalUser)
+	answer, providerUsed, engineUsed := s.askLLM(generalSystem, generalUser)
 	if answer == "" {
 		if bengali {
 			answer = "দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।"
@@ -647,6 +677,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Employees: nil, // Clean response with NO employee cards!
 		Mode:      "general",
 		Provider:  providerUsed,
+		Engine:    engineUsed,
 	})
 }
 

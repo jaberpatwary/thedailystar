@@ -1,0 +1,8 @@
+go: warning: ignoring go.mod in $GOPATH C:\Users\jaber\go
+2026/10/24 12:01:53 CSV is newer than the cached index, but Ollama is unavailable; serving the existing cached directory
+2026/10/24 12:01:53 ready: 492 employees indexed
+2026/10/24 12:01:53 Daily Star staff-directory chatbot listening on 127.0.0.1:8085
+2026/10/24 12:01:53   AI Engine:  ⚡ Groq Cloud LPU (openai/gpt-oss-120b) [ACTIVE - Ultra Fast]
+2026/10/24 12:01:53   Fallback:   💻 Ollama http://localhost:11434 (llama3.2)
+2026/10/24 12:01:53   POST /api/reload to re-index after HR updates the CSV
+2026/10/25 13:15:35 Ollama chat failed: ollama generate request failed (is Ollama running at http://localhost:11434?): Post "http://localhost:11434/api/generate": dial tcp [::1]:11434: connectex: No connection could be made because the target machine actively refused it.
