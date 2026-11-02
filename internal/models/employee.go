@@ -9,24 +9,30 @@ import (
 // Only official, work-related fields are stored here on purpose —
 // no personal phone numbers, home addresses, NID, etc.
 type Employee struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Designation   string    `json:"designation"`
-	Department    string    `json:"department"`
-	Extension     string    `json:"extension"`   // raw value from CSV
-	Phone         string    `json:"phone"`       // parsed phone number (if any)
-	EmployeeID    string    `json:"employee_id"` // parsed numeric staff ID e.g. "1005"
-	Email         string    `json:"email"`
-	Desk          string    `json:"desk"`
-	LinkedIn      string    `json:"linkedin"`
-	Twitter       string    `json:"twitter"`
-	Facebook      string    `json:"facebook"`
-	Instagram     string    `json:"instagram"`
-	BloodGroup    string    `json:"blood_group"`
-	Photo         string    `json:"photo"`     // URL or base64 data URI of profile photo
-	Text          string    `json:"text"`      // flattened text used for embedding/search
-	Embedding     []float32 `json:"embedding"` // semantic embedding of Text
-	SchemaVersion int       `json:"schema_version"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	NameAliases        []string  `json:"name_aliases,omitempty"`
+	Designation        string    `json:"designation"`
+	DesignationAliases []string  `json:"designation_aliases,omitempty"`
+	Department         string    `json:"department"`
+	DepartmentAliases  []string  `json:"department_aliases,omitempty"`
+	EmploymentStatus   string    `json:"employment_status,omitempty"`
+	RecordUpdatedAt    string    `json:"record_updated_at,omitempty"`
+	Extension          string    `json:"extension"`   // raw value from CSV
+	Phone              string    `json:"phone"`       // parsed phone number (if any)
+	EmployeeID         string    `json:"employee_id"` // parsed numeric staff ID e.g. "1005"
+	JoiningDate        string    `json:"joining_date"`
+	Email              string    `json:"email"`
+	Desk               string    `json:"desk"`
+	LinkedIn           string    `json:"linkedin"`
+	Twitter            string    `json:"twitter"`
+	Facebook           string    `json:"facebook"`
+	Instagram          string    `json:"instagram"`
+	BloodGroup         string    `json:"blood_group"`
+	Photo              string    `json:"photo"`     // URL or base64 data URI of profile photo
+	Text               string    `json:"text"`      // flattened text used for embedding/search
+	Embedding          []float32 `json:"embedding"` // semantic embedding of Text
+	SchemaVersion      int       `json:"schema_version"`
 }
 
 var reEmail = regexp.MustCompile(`(?i)^[^\s@]+@[^\s@]+\.[^\s@]+$`)
@@ -79,7 +85,7 @@ func (e *Employee) NormalizeDirectoryFields(values []string) {
 	if !reHTTPURL.MatchString(e.Instagram) {
 		e.Instagram = ""
 	}
-	e.SchemaVersion = 2
+	e.SchemaVersion = 4
 }
 
 // rePhone matches Bangladeshi mobile numbers: optional leading 0/+88, then 11 digits
@@ -118,14 +124,36 @@ func ParseExtension(raw string) (phone, empID string) {
 // BuildText creates a short natural-language description of the employee.
 // This is what gets embedded and what the LLM sees as context.
 func (e *Employee) BuildText() string {
-	t := e.Name
-	if e.Designation != "" {
-		t += " is a " + e.Designation
+	designation := strings.TrimSpace(e.Designation)
+	department := strings.TrimSpace(e.Department)
+	if designation == "" {
+		designation = "Not specified in the source directory"
 	}
-	if e.Department != "" {
-		t += " in the " + e.Department + " department"
+	if department == "" {
+		department = "Not specified in the source directory"
 	}
-	t += "."
+	t := "Name: " + strings.TrimSpace(e.Name) + ". Designation / job title: " + designation + ". Department: " + department + "."
+	if len(e.NameAliases) > 0 {
+		t += " Also known as: " + strings.Join(e.NameAliases, ", ") + "."
+	}
+	if len(e.DesignationAliases) > 0 {
+		t += " Designation aliases: " + strings.Join(e.DesignationAliases, ", ") + "."
+	}
+	if len(e.DepartmentAliases) > 0 {
+		t += " Department aliases: " + strings.Join(e.DepartmentAliases, ", ") + "."
+	}
+	joiningDate := strings.TrimSpace(e.JoiningDate)
+	if joiningDate == "" {
+		joiningDate = "Not listed in the source directory"
+	}
+	bloodGroup := strings.TrimSpace(e.BloodGroup)
+	if bloodGroup == "" {
+		bloodGroup = "Not listed in the source directory"
+	}
+	t += " Joining date: " + joiningDate + ". Blood group: " + bloodGroup + "."
+	if updatedAt := strings.TrimSpace(e.RecordUpdatedAt); updatedAt != "" {
+		t += " HR record last verified / updated: " + updatedAt + "."
+	}
 	if e.Phone != "" {
 		t += " Phone: " + e.Phone + "."
 	}

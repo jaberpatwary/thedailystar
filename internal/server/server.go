@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -275,6 +276,7 @@ func isBengali(s string) bool {
 		"er", "koi", "tar", "or", "kemon", "baniyeche", "banise", "banaiyeche",
 		"koreche", "korche", "bhalo", "valo", "tumi", "apni", "amake", "tomake",
 		"bolun", "shob", "sob", "dekhan", "dekhao", "khuje", "kintu", "aar",
+		"sompadok", "shompadok", "jugmo", "uposompadok", "sangbadik", "bibhag", "bivag", "podobi",
 	}
 	words := strings.Fields(strings.Trim(lower, "?!.,\"';:-।"))
 	for _, w := range words {
@@ -288,13 +290,95 @@ func isBengali(s string) bool {
 	return false
 }
 
+func requestedEmployeeAttribute(e models.Employee, query string, inBengali bool) (string, bool) {
+	q := strings.ToLower(query)
+	attribute, value := "", ""
+	switch {
+	case strings.Contains(q, "record updated") || strings.Contains(q, "last updated") || strings.Contains(q, "updated date") || strings.Contains(q, "last update date"):
+		attribute, value = "record updated date", e.RecordUpdatedAt
+	case strings.Contains(q, "blood group") || strings.Contains(q, "bloodgroup") || strings.Contains(q, "rokter group") || strings.Contains(q, "\u09b0\u0995\u09cd\u09a4\u09c7\u09b0 \u0997\u09cd\u09b0\u09c1\u09aa"):
+		attribute, value = "blood group", e.BloodGroup
+	case strings.Contains(q, "joining date") || strings.Contains(q, "join date") || strings.Contains(q, "date of joining") || strings.Contains(q, "jogdan") || strings.Contains(q, "\u09af\u09cb\u0997\u09a6\u09be\u09a8\u09c7\u09b0 \u09a4\u09be\u09b0\u09bf\u0996"):
+		attribute, value = "joining date", e.JoiningDate
+	case strings.Contains(q, "email") || strings.Contains(q, "e-mail") || strings.Contains(q, "\u0987\u09ae\u09c7\u0987\u09b2"):
+		attribute, value = "email", e.Email
+	case strings.Contains(q, "phone") || strings.Contains(q, "mobile") || strings.Contains(q, "\u09ab\u09cb\u09a8"):
+		attribute, value = "phone", e.Phone
+	case strings.Contains(q, "floor") || strings.Contains(q, "desk") || strings.Contains(q, "location") || strings.Contains(q, "where") || strings.Contains(q, "kothay"):
+		attribute, value = "desk/location", e.Desk
+	case strings.Contains(q, "designation") || strings.Contains(q, "title") || strings.Contains(q, "podobi") || strings.Contains(q, "\u09aa\u09a6\u09ac\u09bf") || strings.Contains(q, "\u09aa\u09a6\u09ac\u09c0"):
+		attribute, value = "designation", e.Designation
+	case strings.Contains(q, "department") || strings.Contains(q, "dept") || strings.Contains(q, "bibhag") || strings.Contains(q, "bivag") || strings.Contains(q, "\u09ac\u09bf\u09ad\u09be\u0997"):
+		attribute, value = "department", e.Department
+	default:
+		return "", false
+	}
+	if strings.TrimSpace(value) == "" {
+		if inBengali {
+			return fmt.Sprintf("**%s**-\u098f\u09b0 %s: \u09a4\u09a5\u09cd\u09af \u09a1\u09bf\u09b0\u09c7\u0995\u09cd\u099f\u09b0\u09bf\u09a4\u09c7 \u09a8\u09c7\u0987।", e.Name, attribute), true
+		}
+		return fmt.Sprintf("**%s**: %s is not listed in the HR directory.", e.Name, attribute), true
+	}
+	if inBengali {
+		return fmt.Sprintf("**%s**-\u098f\u09b0 %s: **%s**", e.Name, attribute, value), true
+	}
+	return fmt.Sprintf("**%s**'s %s: **%s**", e.Name, attribute, value), true
+}
+
 func formatSingleEmployee(e models.Employee, inBengali bool) string {
+	if inBengali {
+		return formatSingleEmployeeBengali(e)
+	}
 	var b strings.Builder
+	if inBengali {
+		fmt.Fprintf(&b, "**%s** হলেন The Daily Star-এর **%s**।\n\n", e.Name, e.Designation)
+		if e.Department != "" {
+			fmt.Fprintf(&b, "🏢 **বিভাগ:** %s\n", e.Department)
+		}
+		joiningDate := e.JoiningDate
+		if joiningDate == "" {
+			joiningDate = "তথ্য নেই"
+		}
+		bloodGroup := e.BloodGroup
+		if bloodGroup == "" {
+			bloodGroup = "তথ্য নেই"
+		}
+		fmt.Fprintf(&b, "**যোগদানের তারিখ:** %s\n**রক্তের গ্রুপ:** %s\n", joiningDate, bloodGroup)
+		if e.Desk != "" {
+			fmt.Fprintf(&b, "📍 **অবস্থান:** %s\n", e.Desk)
+		}
+		if e.Email != "" {
+			fmt.Fprintf(&b, "✉️ **অফিসিয়াল ইমেইল:** %s\n", e.Email)
+		}
+		if e.Phone != "" {
+			fmt.Fprintf(&b, "📞 **ফোন:** %s\n", e.Phone)
+		}
+		if e.EmployeeID != "" {
+			fmt.Fprintf(&b, "🆔 **স্টাফ আইডি:** %s\n", e.EmployeeID)
+		}
+		return strings.TrimSpace(b.String())
+	}
 	if inBengali {
 		b.WriteString(fmt.Sprintf("**%s** হলেন The Daily Star-এর **%s**।\n\n", e.Name, e.Designation))
 		if e.Department != "" {
 			b.WriteString(fmt.Sprintf("🏢 **বিভাগ (Department):** %s\n", e.Department))
 		}
+		joiningDate := e.JoiningDate
+		if joiningDate == "" {
+			joiningDate = "Not listed in directory"
+		}
+		bloodGroup := e.BloodGroup
+		if bloodGroup == "" {
+			bloodGroup = "Not listed in directory"
+		}
+		b.WriteString(fmt.Sprintf("Joining Date: %s\n", joiningDate))
+		b.WriteString(fmt.Sprintf("Blood Group: %s\n", bloodGroup))
+		recordUpdatedAt := e.RecordUpdatedAt
+		if recordUpdatedAt == "" {
+			recordUpdatedAt = "Not listed in directory"
+		}
+		b.WriteString(fmt.Sprintf("HR Record Updated: %s\n", recordUpdatedAt))
+
 		if e.Desk != "" {
 			b.WriteString(fmt.Sprintf("📍 **অবস্থান / ডেস্ক:** %s\n", e.Desk))
 		}
@@ -331,6 +415,17 @@ func formatSingleEmployee(e models.Employee, inBengali bool) string {
 		if e.Department != "" {
 			b.WriteString(fmt.Sprintf("🏢 **Department:** %s\n", e.Department))
 		}
+		joiningDate := e.JoiningDate
+		if joiningDate == "" {
+			joiningDate = "Not listed in directory"
+		}
+		bloodGroup := e.BloodGroup
+		if bloodGroup == "" {
+			bloodGroup = "Not listed in directory"
+		}
+		b.WriteString(fmt.Sprintf("Joining Date: %s\n", joiningDate))
+		b.WriteString(fmt.Sprintf("Blood Group: %s\n", bloodGroup))
+
 		if e.Desk != "" {
 			b.WriteString(fmt.Sprintf("📍 **Desk / Location:** %s\n", e.Desk))
 		}
@@ -367,10 +462,26 @@ func formatSingleEmployee(e models.Employee, inBengali bool) string {
 }
 
 func formatMultipleEmployees(topic string, emps []models.Employee, inBengali bool) string {
+	if inBengali {
+		return formatMultipleEmployeesBengali(topic, emps)
+	}
 	var b strings.Builder
+	if inBengali {
+		fmt.Fprintf(&b, "**%s**-এর সংশ্লিষ্ট মোট **%d জন** কর্মী পাওয়া গেছে:\n\n", topic, len(emps))
+		for i, e := range emps {
+			e.Designation += employeeDisambiguators(e)
+			loc := ""
+			if e.Desk != "" {
+				loc = " (📍 " + e.Desk + ")"
+			}
+			fmt.Fprintf(&b, "%d. **%s** — %s%s\n", i+1, e.Name, e.Designation, loc)
+		}
+		return strings.TrimSpace(b.String())
+	}
 	if inBengali {
 		b.WriteString(fmt.Sprintf("**%s**-এর সংশ্লিষ্ট মোট **%d জন** কর্মী পাওয়া গেছে:\n\n", topic, len(emps)))
 		for i, e := range emps {
+			e.Designation += employeeDisambiguators(e)
 			loc := ""
 			if e.Desk != "" {
 				loc = " (📍 " + e.Desk + ")"
@@ -380,6 +491,7 @@ func formatMultipleEmployees(topic string, emps []models.Employee, inBengali boo
 	} else {
 		b.WriteString(fmt.Sprintf("Found **%d staff members** related to **%s**:\n\n", len(emps), topic))
 		for i, e := range emps {
+			e.Designation += employeeDisambiguators(e)
 			loc := ""
 			if e.Desk != "" {
 				loc = " (📍 " + e.Desk + ")"
@@ -388,6 +500,84 @@ func formatMultipleEmployees(topic string, emps []models.Employee, inBengali boo
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func formatSingleEmployeeBengali(e models.Employee) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "**%s** \u09b9\u09b2\u09c7\u09a8 The Daily Star-\u098f\u09b0 **%s**\u0964\n\n", e.Name, e.Designation)
+	if e.Department != "" {
+		fmt.Fprintf(&b, "\U0001f3e2 **\u09ac\u09bf\u09ad\u09be\u0997:** %s\n", e.Department)
+	}
+	joiningDate, bloodGroup := e.JoiningDate, e.BloodGroup
+	if joiningDate == "" {
+		joiningDate = "\u09a4\u09a5\u09cd\u09af \u09a8\u09c7\u0987"
+	}
+	if bloodGroup == "" {
+		bloodGroup = "\u09a4\u09a5\u09cd\u09af \u09a8\u09c7\u0987"
+	}
+	fmt.Fprintf(&b, "**\u09af\u09cb\u0997\u09a6\u09be\u09a8\u09c7\u09b0 \u09a4\u09be\u09b0\u09bf\u0996:** %s\n**\u09b0\u0995\u09cd\u09a4\u09c7\u09b0 \u0997\u09cd\u09b0\u09c1\u09aa:** %s\n", joiningDate, bloodGroup)
+	recordUpdatedAt := e.RecordUpdatedAt
+	if recordUpdatedAt == "" {
+		recordUpdatedAt = "\u09a4\u09a5\u09cd\u09af \u09a8\u09c7\u0987"
+	}
+	fmt.Fprintf(&b, "**HR record update date:** %s\n", recordUpdatedAt)
+	if e.Desk != "" {
+		fmt.Fprintf(&b, "\U0001f4cd **\u0985\u09ac\u09b8\u09cd\u09a5\u09be\u09a8:** %s\n", e.Desk)
+	}
+	if e.Email != "" {
+		fmt.Fprintf(&b, "\u2709\ufe0f **\u0985\u09ab\u09bf\u09b8\u09bf\u09af\u09bc\u09be\u09b2 \u0987\u09ae\u09c7\u0987\u09b2:** %s\n", e.Email)
+	}
+	if e.Phone != "" {
+		fmt.Fprintf(&b, "\U0001f4de **\u09ab\u09cb\u09a8:** %s\n", e.Phone)
+	}
+	if e.EmployeeID != "" {
+		fmt.Fprintf(&b, "\U0001f194 **\u09b8\u09cd\u099f\u09be\u09ab \u0986\u0987\u09a1\u09bf:** %s\n", e.EmployeeID)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func formatMultipleEmployeesBengali(topic string, emps []models.Employee) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "**%s**-\u098f\u09b0 \u09b8\u0982\u09b6\u09cd\u09b2\u09bf\u09b7\u09cd\u099f \u09ae\u09cb\u099f **%d \u099c\u09a8** \u0995\u09b0\u09cd\u09ae\u09c0 \u09aa\u09be\u0993\u09af\u09bc\u09be \u0997\u09c7\u099b\u09c7:\n\n", topic, len(emps))
+	for i, e := range emps {
+		e.Designation += employeeDisambiguators(e)
+		loc := ""
+		if e.Desk != "" {
+			loc = " (\U0001f4cd " + e.Desk + ")"
+		}
+		fmt.Fprintf(&b, "%d. **%s** — %s%s\n", i+1, e.Name, e.Designation, loc)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func employeeDisambiguators(e models.Employee) string {
+	var parts []string
+	if e.Department != "" {
+		parts = append(parts, e.Department)
+	}
+	if e.EmployeeID != "" {
+		parts = append(parts, "Staff ID "+e.EmployeeID)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, "; ") + ")"
+}
+
+func allSameEmployeeName(employees []models.Employee) bool {
+	if len(employees) < 2 {
+		return false
+	}
+	first := strings.ToLower(strings.TrimSpace(employees[0].Name))
+	if first == "" {
+		return false
+	}
+	for _, employee := range employees[1:] {
+		if !strings.EqualFold(first, strings.TrimSpace(employee.Name)) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) askLLM(systemPrompt, userPrompt string) (string, string, string) {
@@ -486,10 +676,15 @@ func hasPronounOrFollowUp(q string) bool {
 func isDirectoryQuestion(q string) bool {
 	lower := strings.ToLower(q)
 	directoryKeywords := []string{
+		"head of", "heads ", "department head", "department-er head",
+		"\u09b8\u09ae\u09cd\u09aa\u09be\u09a6\u0995", "\u09af\u09c1\u0997\u09cd\u09ae", "\u0989\u09aa\u09b8\u09ae\u09cd\u09aa\u09be\u09a6\u0995",
+		"\u09b8\u09be\u0982\u09ac\u09be\u09a6\u09bf\u0995", "\u09ac\u09bf\u09ad\u09be\u0997", "\u09aa\u09a6\u09ac\u09bf", "\u09aa\u09a6\u09ac\u09c0",
 		"mahfuz", "anam", "naznin", "reporter", "reporters", "editor", "editors", "journalist", "journalists",
 		"staff", "employee", "employees", "desk", "desks", "department", "departments", "bureau",
 		"metro desk", "sports desk", "editorial desk", "circulation desk", "business desk",
 		"it department", "it team", "digital desk", "online desk", "extension", "staff id", "employee id",
+		"blood group", "bloodgroup", "joining date", "join date",
+		"রক্তের গ্রুপ", "যোগদানের তারিখ",
 		"daily star", "dailystar", "tds", "who works in", "who works at", "who works on",
 		"who is the editor", "who is the reporter", "who is in charge", "contact info",
 		"পদবী", "বিভাগ", "কর্মী", "সাংবাদিক", "ডেস্ক", "ইমেইল", "ফোন", "আইডি", "কর্মকর্তা", "ডেইলি স্টার",
@@ -500,6 +695,70 @@ func isDirectoryQuestion(q string) bool {
 		}
 	}
 	return false
+}
+
+func isHeadDirectoryQuestion(q string) bool {
+	lower := strings.ToLower(q)
+	return strings.Contains(lower, "head") || strings.Contains(lower, "heads") || strings.Contains(lower, "\u09aa\u09cd\u09b0\u09a7\u09be\u09a8")
+}
+
+func isEmployeeAttributeQuestion(q string) bool {
+	lower := strings.ToLower(q)
+	for _, term := range []string{"blood group", "bloodgroup", "joining date", "join date", "record updated", "last updated", "updated date", "last update date", "rokter group", "jogdaner tarikh", "\u09b0\u0995\u09cd\u09a4\u09c7\u09b0 \u0997\u09cd\u09b0\u09c1\u09aa", "\u09af\u09cb\u0997\u09a6\u09be\u09a8\u09c7\u09b0 \u09a4\u09be\u09b0\u09bf\u0996"} {
+		if strings.Contains(lower, term) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCountQuestion(q string) bool {
+	lower := strings.ToLower(q)
+	countTerms := []string{
+		"how many", "count", "total staff", "total employee", "number of staff",
+		"koto jon", "kotojon", "koy jon", "koyjon", "koijon", "kotojon",
+		"কতজন", "কত জন", "কতজনের", "কত জনের", "সংখ্যা", "মোট",
+	}
+	for _, term := range countTerms {
+		if strings.Contains(lower, term) {
+			return true
+		}
+	}
+	return false
+}
+
+func formatDepartmentMembers(department string, employees []models.Employee, inBengali bool) string {
+	var b strings.Builder
+	if inBengali {
+		fmt.Fprintf(&b, "**%s** বিভাগে মোট **%d জন** কর্মী আছেন:\n\n", department, len(employees))
+	} else {
+		fmt.Fprintf(&b, "**%s** has **%d staff members**:\n\n", department, len(employees))
+	}
+	for i, employee := range employees {
+		fmt.Fprintf(&b, "%d. **%s** — %s\n", i+1, employee.Name, employee.Designation)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func formatDepartmentCounts(counts []store.DepartmentCount, inBengali bool) string {
+	var total int
+	for _, item := range counts {
+		total += item.Count
+	}
+	var b strings.Builder
+	if inBengali {
+		fmt.Fprintf(&b, "বিভাগ অনুযায়ী কর্মীসংখ্যা (মোট **%d জন**):\n\n", total)
+	} else {
+		fmt.Fprintf(&b, "Staff count by department (total **%d**):\n\n", total)
+	}
+	for _, item := range counts {
+		if inBengali {
+			fmt.Fprintf(&b, "- **%s**: %d জন\n", item.Department, item.Count)
+		} else {
+			fmt.Fprintf(&b, "- **%s**: %d\n", item.Department, item.Count)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
@@ -548,6 +807,41 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isCountQuestion(msg) {
+		if department := s.Store.DepartmentFromQuery(msg); department != "" {
+			employees := s.Store.EmployeesByDepartment(department)
+			writeJSON(w, chatResponse{
+				Answer:    formatDepartmentMembers(department, employees, bengali),
+				Employees: employees,
+				Mode:      "direct_lookup",
+				Provider:  "Verified Staff Directory (" + activeProv + ")",
+				Engine:    activeEng,
+			})
+			return
+		}
+		if matches, score := s.Store.Search(msg); len(matches) > 0 && score >= 400 {
+			answer := fmt.Sprintf("Found **%d staff members** matching the requested designation.", len(matches))
+			if bengali {
+				answer = fmt.Sprintf("চাওয়া পদবির সঙ্গে মিলে **%d জন** কর্মী পাওয়া গেছে।", len(matches))
+			}
+			writeJSON(w, chatResponse{
+				Answer:    answer,
+				Employees: matches,
+				Mode:      "direct_lookup",
+				Provider:  "Verified Staff Directory (" + activeProv + ")",
+				Engine:    activeEng,
+			})
+			return
+		}
+		writeJSON(w, chatResponse{
+			Answer:   formatDepartmentCounts(s.Store.DepartmentCounts(), bengali),
+			Mode:     "direct_lookup",
+			Provider: "Verified Staff Directory (" + activeProv + ")",
+			Engine:   activeEng,
+		})
+		return
+	}
+
 	// 3. Direct multi-field staff search (Instantly matches full name, partial name, desk, desig, dept)
 	matches, topScore := s.Store.Search(msg)
 	cleaned := store.CleanQuery(msg)
@@ -582,6 +876,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			} else {
 				ans = fmt.Sprintf("Here are the directory details for **%s**, **%s** (%s):", emp.Name, emp.Designation, emp.Department)
 			}
+			if attributeAnswer, handled := requestedEmployeeAttribute(emp, msg, bengali); handled {
+				ans = attributeAnswer
+			}
 			writeJSON(w, chatResponse{
 				Answer:    ans,
 				Employees: matches,
@@ -593,7 +890,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Multiple employee matches
-		if strings.EqualFold(matches[0].Name, cleaned) || strings.EqualFold(matches[0].Name, strings.TrimSpace(msg)) {
+		if len(matches) == 1 && (strings.EqualFold(matches[0].Name, cleaned) || strings.EqualFold(matches[0].Name, strings.TrimSpace(msg))) {
 			emp := matches[0]
 			var ans string
 			if bengali {
@@ -614,13 +911,40 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		if topic == "" {
 			topic = msg
 		}
+		answer := formatMultipleEmployees(topic, matches, bengali)
+		if allSameEmployeeName(matches) {
+			if bengali {
+				answer += "\n\n\u098f\u0995\u0987 \u09a8\u09be\u09ae\u09c7 \u098f\u0995\u09be\u09a7\u09bf\u0995 \u0995\u09b0\u09cd\u09ae\u09c0 \u0986\u099b\u09c7\u09a8; \u09a8\u09bf\u09b0\u09cd\u09a6\u09bf\u09b7\u09cd\u099f \u0995\u09b0\u09a4\u09c7 \u09ac\u09bf\u09ad\u09be\u0997 \u09ac\u09be Staff ID \u09ac\u09b2\u09c1\u09a8\u0964"
+			} else {
+				answer += "\n\nSeveral employees share this name. Specify a department or Staff ID to choose one."
+			}
+		}
 		writeJSON(w, chatResponse{
-			Answer:    formatMultipleEmployees(topic, matches, bengali),
+			Answer:    answer,
 			Employees: matches,
 			Mode:      "direct_lookup",
 			Provider:  "Verified Staff Directory (" + activeProv + ")",
 			Engine:    activeEng,
 		})
+		return
+	}
+
+	if isEmployeeAttributeQuestion(msg) {
+		writeJSON(w, chatResponse{
+			Answer:   "Please include the employee's name. Joining dates and blood groups are shown only when HR has provided them in the directory.",
+			Mode:     "no_match",
+			Provider: activeProv,
+			Engine:   activeEng,
+		})
+		return
+	}
+
+	if isHeadDirectoryQuestion(msg) {
+		answer := "I could not find a verified department head matching that department in the current HR directory."
+		if bengali {
+			answer = "বর্তমান HR ডিরেক্টরিতে এই বিভাগের জন্য যাচাইকৃত head-এর তথ্য পাওয়া যায়নি।"
+		}
+		writeJSON(w, chatResponse{Answer: answer, Mode: "no_match", Provider: "Verified Staff Directory (" + activeProv + ")", Engine: activeEng})
 		return
 	}
 
@@ -708,9 +1032,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		provider = "groq"
 		model = s.Groq.Model
 	}
+	sourceUpdatedAt := "unknown"
+	if sourceInfo, err := os.Stat(s.CSVPath); err == nil {
+		sourceUpdatedAt = sourceInfo.ModTime().Format(time.RFC3339)
+	}
 	writeJSON(w, map[string]any{
 		"status":            "ok",
 		"employees_indexed": s.Store.Count(),
+		"data_quality":      s.Store.DataQualityReport(),
+		"source_updated_at": sourceUpdatedAt,
 		"provider":          provider,
 		"model":             model,
 		"groq_active":       groqActive,

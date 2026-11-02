@@ -15,12 +15,97 @@ per-request charge). Your HR data never leaves your own server.
 2. Each employee gets a short text description, which is turned into a
    vector **embedding** by a local Ollama model and cached to
    `data/employees_index.json`.
-3. When someone types a **name**, the bot does a direct, exact/substring
-   match against the directory and returns the real stored data —
-   no AI guessing involved, so it can't hallucinate wrong details.
+3. Directory questions are matched directly against names, designations,
+   departments, desks, and contact fields. Common English, Banglish, and
+   Bengali query wording around department/designation searches is ignored
+   when matching the actual CSV values. Results come from stored data —
+   no AI guessing involved.
 4. When someone asks a broader **question**, the bot finds the most
    relevant employee records by embedding similarity and asks the local
    LLM to answer using *only* those records as context.
+
+The employee directory is searched, not used to train the language model.
+Add or correct employee facts in the HR CSV, then reload/rebuild the index
+so the chatbot can use them.
+Every indexed employee record explicitly includes the source designation/job
+title and department in its search text. If the CSV omits a value, the bot marks
+it as not specified; it infers a department only from clear directory IDs.
+
+Examples of directory questions:
+
+- `Digital Operations department e koto jon?` — returns the verified count
+  and each matching employee's name and designation.
+- `department wise koyjon?` — returns counts for each department, including
+  rows whose department is missing in the CSV.
+- `News Desk department` — lists matching employees; exact department and
+  designation searches are not limited to the first 25 results.
+- `Who is the editor and publisher in The Daily Star?` — matches the complete
+  designation and returns the person whose title is **Editor & Publisher**.
+  A one-character typo in a role word (for example `publishar`) is tolerated.
+- `join editor` — tolerates the typo and matches **Joint Editor** only, rather
+  than returning everyone whose designation contains “Editor”.
+- `editor my dhaka` — applies both the designation and department filters,
+  returning only editors in **My Dhaka**.
+- `IT team` or `Who is the head of the IT team?` — returns the IT head rather
+  than every person in the department.
+- `Who is the CBO?` — matches the designation acronym to **Chief Business
+  Officer** in the directory and returns its verified employee record.
+- Minor spelling errors are tolerated in employee names, designations, and
+  complete department names, for example `Raffat Binte Rashad`,
+  `edtor my dahka`, or `digtal operatons`.
+- Common Banglish and Bengali job words such as `sompadok`, `jugmo sompadok`,
+  `sangbadik`, `সম্পাদক`, and `যুগ্ম সম্পাদক` are normalized to directory titles.
+  Employee-name spellings in another script still need a verified
+  `name_aliases` entry; the bot does not guess transliterations.
+- `all types of editors`, `all editor roles`, or `sob rokom editor` deliberately
+  includes Joint Editors, Sub-Editors, and other editor titles; a plain `editor`
+  query stays limited to the exact Editor category.
+- Uppercase initials such as `RR` can find employees by first/last-name initials;
+  common title abbreviations such as `Sr.` and `Asst.` normalize to their full
+  forms. Acronyms such as `CBO` are matched from the title before its comma.
+- A role plus department is treated as an intersection, while a role-only or
+  department-only query returns the matching directory records with both fields.
+- `/api/health` includes aggregate data-quality counts for missing directory
+  fields, invalid joining dates/blood groups/status values, duplicate names/IDs,
+  alias coverage, and the source CSV modification time; empty HR facts remain
+  explicitly unavailable rather than inferred.
+- Updating the CSV reuses embeddings for unchanged employee records and only
+  asks Ollama to embed records whose searchable text has changed.
+
+Head-of-department lookup uses the HR designation and department fields:
+`Who is head of IT?` uses the IT department acronym and returns only the staff
+record whose verified designation is a head title. `list department heads`
+lists all records with a head title; departments without a verified head return
+a no-match response rather than unrelated department staff.
+Queries can combine a head role, department, and a person's name, for example
+`head of HR Mahmud` narrows the HR heads to Md. Mahmudul Hasan Khan.
+
+Remaining HR-backed directory learning checklist:
+
+- Add HR-approved alternate spellings, Banglish/transliterated names, and
+  department short forms in the alias columns. The search supports these
+  aliases, but none are populated until HR verifies them.
+- Supply an approved organization chart or reporting rule if `Chief`,
+  `In-Charge`, or other titles should count as a department's “Head”. The bot
+  searches those titles by their actual designation and does not invent a
+  reporting hierarchy.
+- Fill joining dates, blood groups, and record update dates from HR so direct
+  employee questions can return actual values. The current source workbook
+  does not contain these fields.
+- Mark current/former status in the source when HR wants former employees
+  excluded; status filtering is ready, but blank status is not guessed.
+- Review duplicate names and incomplete/malformed source rows with HR. The bot
+  reports IDs and departments to disambiguate duplicate names and exposes
+  aggregate quality counts at `/api/health`; it does not delete or repair rows
+  based on guesses.
+- After approved HR changes, reload the CSV and manually verify head queries,
+  title-plus-department filters, typo queries, duplicate-name disambiguation,
+  and employee attribute lookups against the source.
+
+For a manual directory review after HR changes, check queries such as `Who is
+head of IT?`, `head of HR`, `Who is in charge of Star Bangla?`, `all types of
+editors`, an exact duplicate employee name, and a named employee's email or
+record update date. Confirm results against the current HR source.
 
 ## 1. Install Ollama (one-time, free)
 
@@ -41,12 +126,26 @@ leaves your machine/server.
 ## 2. Add your real HR data
 
 Edit `data/employees.csv`. Required column: `name`. Optional columns:
-`designation`, `department`, `extension`, `email`, `desk`. Keep this to
+`designation`, `department`, `extension`, `email`, `desk`, `joining_date`,
+`blood_group`, `name_aliases`, `designation_aliases`, `department_aliases`,
+`employment_status`, and `record_updated_at`. Add verified join dates, blood
+groups, and record update dates from HR; blank fields
+are shown as not listed. Keep this to
 work-related fields only, as agreed with HR.
+Optional `employment_status` (or `status`) accepts values such as `active`,
+`inactive`, `former`, `left`, `resigned`, `terminated`, or `retired`. Rows with
+an inactive status are excluded from the searchable directory; new or changed
+HR rows are picked up after the CSV reload.
+
+For verified alternate spellings or commonly used short forms, put aliases in
+the matching alias column separated by `|`. For example, `name_aliases` can
+contain official alternate spellings/Banglish forms; title and department
+aliases work the same way. Search returns the employee's original HR name,
+designation, and department. Do not add guessed aliases or unsupported HR data.
 
 ```csv
-name,designation,department,extension,email,desk
-Rahim Uddin,Staff Reporter,Metro Desk,2101,rahim.uddin@example.com,3rd Floor
+name,designation,department,extension,email,desk,joining_date,blood_group,name_aliases,designation_aliases,department_aliases,employment_status,record_updated_at
+Rahim Uddin,Staff Reporter,Metro Desk,2101,rahim.uddin@example.com,3rd Floor,2020-04-12,O+,Rahim Uddin|Rahimuddin,Reporter,Metro,active,2026-10-26
 ```
 
 ## 3. Build and run

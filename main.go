@@ -78,12 +78,12 @@ func main() {
 		}
 	} else if st.NeedsRebuild(csvPath) {
 		if client.IsAvailable() {
-			log.Println("CSV is newer than the cached index; rebuilding embeddings...")
+			log.Println("source data or index format is newer than the cached index; rebuilding embeddings...")
 			if err := st.BuildFromCSV(csvPath, client); err != nil {
 				log.Printf("re-index skipped; serving the existing cached directory: %v", err)
 			}
 		} else {
-			log.Println("CSV is newer than the cached index, but Ollama is unavailable; serving the existing cached directory")
+			log.Println("the employee index needs rebuilding, but Ollama is unavailable; serving the cached directory with in-memory organization field updates")
 		}
 	}
 	log.Printf("ready: %d employees indexed", st.Count())

@@ -2331,6 +2331,18 @@
                   </div>
                 </div>
               ` : ''}
+              <div class="emp-row">
+                <span>📅 Joining Date</span>
+                <span style="color:${emp.joining_date ? '#cbd5e1' : 'var(--text-dim)'};">${escapeHtml(emp.joining_date || 'Not listed')}</span>
+              </div>
+              <div class="emp-row">
+                <span>🩸 Blood Group</span>
+                <span style="color:${emp.blood_group ? '#cbd5e1' : 'var(--text-dim)'};">${escapeHtml(emp.blood_group || 'Not listed')}</span>
+              </div>
+              <div class="emp-row">
+                <span>HR Record Updated</span>
+                <span style="color:${emp.record_updated_at ? '#cbd5e1' : 'var(--text-dim)'};">${escapeHtml(emp.record_updated_at || 'Not listed')}</span>
+              </div>
               ${emp.desk ? `
                 <div class="emp-row">
                   <span>📍 Desk Floor</span>
@@ -2429,7 +2441,7 @@
     `;
 
     chatStream.appendChild(turn);
-    scrollToBottom();
+    scrollToTurnStart(turn);
     return turn;
   }
 
@@ -2452,7 +2464,6 @@
       </div>
     `;
     chatStream.appendChild(turn);
-    scrollToBottom();
     return turn;
   }
 
@@ -2466,6 +2477,18 @@
     requestAnimationFrame(() => {
       chatMessagesContainer.scrollTo({
         top: chatMessagesContainer.scrollHeight,
+        behavior: 'smooth'
+      });
+    });
+  }
+
+  function scrollToTurnStart(turn) {
+    requestAnimationFrame(() => {
+      const containerTop = chatMessagesContainer.getBoundingClientRect().top;
+      const turnTop = turn.getBoundingClientRect().top;
+      const targetTop = chatMessagesContainer.scrollTop + turnTop - containerTop - 12;
+      chatMessagesContainer.scrollTo({
+        top: Math.max(0, targetTop),
         behavior: 'smooth'
       });
     });
