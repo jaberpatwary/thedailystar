@@ -1510,11 +1510,12 @@ func designationMatchesTermsInDepartment(designation string, terms, departmentWo
 		}
 	}
 	if len(terms) == 1 {
-		// "Editor" is intentionally a leading-title match, so Sub-Editor,
-		// Joint Editor and Assistant Editor stay distinct. Other role words
-		// such as Reporter can match titles like Senior Staff Reporter.
+		// "Editor" is an exact title category: don't include Editor & Publisher,
+		// Editor In-charge, Joint Editor, Assistant Editor, or Sub-Editor when
+		// the user asks for Editor. Department context after a comma was removed
+		// above, so "Editor, My Dhaka" still matches this exact role.
 		if terms[0] == "editor" {
-			return len(normalizedFieldWords) > 0 && wordsMatchWithTypo(terms[0], normalizedFieldWords[0])
+			return len(normalizedFieldWords) == 1 && wordsMatchWithTypo(terms[0], normalizedFieldWords[0])
 		}
 		for _, word := range normalizedFieldWords {
 			if wordsMatchWithTypo(terms[0], word) {
