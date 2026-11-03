@@ -292,6 +292,28 @@ func isBengali(s string) bool {
 
 func requestedEmployeeAttribute(e models.Employee, query string, inBengali bool) (string, bool) {
 	q := strings.ToLower(query)
+	isAgeQuery := false
+	for _, token := range strings.Fields(q) {
+		if strings.Trim(token, "?!.,:;()[]{}") == "age" {
+			isAgeQuery = true
+			break
+		}
+	}
+	isAgeQuery = isAgeQuery || strings.Contains(q, "how old") || strings.Contains(q, "boyosh") || strings.Contains(q, "\u09ac\u09df\u09b8") || strings.Contains(q, "\u09ac\u09af\u09bc\u09b8")
+	isServiceQuery := strings.Contains(q, "service length") || strings.Contains(q, "service log") || strings.Contains(q, "length of service") || strings.Contains(q, "years of service") || strings.Contains(q, "work duration") || strings.Contains(q, "tenure") || strings.Contains(q, "how long") || strings.Contains(q, "how many days") || strings.Contains(q, "how many years") || strings.Contains(q, "koto din") || strings.Contains(q, "koto bochor") || strings.Contains(q, "chakri koto") || strings.Contains(q, "kormo jibon") || strings.Contains(q, "\u099a\u09be\u0995\u09b0\u09bf\u09b0 \u09ae\u09c7\u09df\u09be\u09a6")
+	if isAgeQuery && isServiceQuery {
+		age, service := strings.TrimSpace(e.Age), strings.TrimSpace(e.ServiceLength)
+		if age == "" {
+			age = "Not listed in the HR directory"
+		}
+		if service == "" {
+			service = "Not listed in the HR directory"
+		}
+		if inBengali {
+			return fmt.Sprintf("**%s**-এর বয়স: **%s**\nচাকরির মেয়াদ: **%s**", e.Name, age, service), true
+		}
+		return fmt.Sprintf("**%s**'s age: **%s**\nService length: **%s**", e.Name, age, service), true
+	}
 	attribute, value := "", ""
 	switch {
 	case strings.Contains(q, "employment type") || strings.Contains(q, "job type"):
