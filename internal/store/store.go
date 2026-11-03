@@ -42,6 +42,7 @@ type DataQuality struct {
 	MissingServiceLength   int `json:"missing_service_length"`
 	MissingPersonalEmail   int `json:"missing_personal_email"`
 	MissingEmploymentType  int `json:"missing_employment_type"`
+	MissingWhatsAppNumber  int `json:"missing_whatsapp_number"`
 	MissingBloodGroup      int `json:"missing_blood_group"`
 	DuplicateEmployeeIDs   int `json:"duplicate_employee_ids"`
 	InvalidJoiningDates    int `json:"invalid_joining_dates"`
@@ -246,6 +247,7 @@ func (s *Store) BuildFromCSV(csvPath string, client *ollama.Client) error {
 			Age:                get(row, "age"),
 			Email:              get(row, "email"),
 			PersonalEmail:      getFirst(row, "personal_email", "personal_mail", "private_email"),
+			WhatsAppNumber:     getFirst(row, "whatsapp_number", "whatsapp", "contact_mobile"),
 			Desk:               get(row, "desk"),
 			LinkedIn:           get(row, "linkedin"),
 			Twitter:            get(row, "twitter"),
@@ -1754,6 +1756,9 @@ func (s *Store) DataQualityReport() DataQuality {
 		}
 		if strings.TrimSpace(employee.EmploymentType) == "" {
 			result.MissingEmploymentType++
+		}
+		if strings.TrimSpace(employee.WhatsAppNumber) == "" && strings.TrimSpace(employee.Phone) == "" {
+			result.MissingWhatsAppNumber++
 		}
 		if strings.TrimSpace(employee.BloodGroup) == "" {
 			result.MissingBloodGroup++

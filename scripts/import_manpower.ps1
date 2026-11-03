@@ -73,6 +73,18 @@ function Normalize-EmploymentType([string]$Value) {
     return $value
 }
 
+function Normalize-WhatsAppNumber([string]$Value) {
+    $pattern = '(?<![0-9])(?:\+?88|0088)?[\s().-]*0?1[3-9](?:[\s().-]*[0-9]){8}(?![0-9])'
+    foreach ($match in [regex]::Matches((Clean-Value $Value), $pattern)) {
+        $digits = $match.Value -replace '[^0-9]', ''
+        if ($digits.StartsWith('0088')) { $digits = $digits.Substring(4) }
+        elseif ($digits.StartsWith('88')) { $digits = $digits.Substring(2) }
+        if ($digits.StartsWith('0')) { $digits = $digits.Substring(1) }
+        if ($digits -match '^1[3-9][0-9]{8}$') { return '880' + $digits }
+    }
+    return ''
+}
+
 function Read-WorkbookRows([System.IO.Compression.ZipArchive]$Archive, [string]$SharedStringsPath = 'xl/sharedStrings.xml') {
     [xml]$book = Read-ZipEntry $Archive 'xl/workbook.xml'
     [xml]$relationships = Read-ZipEntry $Archive 'xl/_rels/workbook.xml.rels'
@@ -205,6 +217,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
         age = Normalize-Period (Get-Field $values @('Age'))
         service_length = Normalize-Period (Get-Field $values @('Service Length'))
         personal_email = $personalEmail
+        whatsapp_number = Normalize-WhatsAppNumber (Get-Field $values @('Contact No.', 'Mobile', 'Phone'))
         name_aliases = ''
         employment_type = $employmentType
         employment_status = $employmentStatus
@@ -235,7 +248,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
 $existing = @(Import-Csv -LiteralPath $CsvPath)
 if ($existing.Count -eq 0) { throw 'The CSV contains no employee rows.' }
 $csvHeaders = @($existing[0].PSObject.Properties.Name)
-foreach ($field in @('hr_id', 'age', 'service_length', 'personal_email', 'employment_type')) {
+foreach ($field in @('hr_id', 'age', 'service_length', 'personal_email', 'employment_type', 'whatsapp_number')) {
     if ($csvHeaders -notcontains $field) { $csvHeaders += $field }
 }
 foreach ($row in $existing) {
@@ -307,7 +320,7 @@ foreach ($key in $incoming.Keys) {
         }
     }
 
-    foreach ($field in @('name', 'designation', 'department', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status', 'employment_type')) {
+    foreach ($field in @('name', 'designation', 'department', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status', 'employment_type', 'whatsapp_number')) {
         if ([string]$source[$field] -ne '') { $target.$field = [string]$source[$field] }
     }
     if ($source.name_aliases -ne '') {
@@ -326,12 +339,14 @@ $active = @($existing | Where-Object { $_.employment_status -eq 'active' }).Coun
 $inactive = @($existing | Where-Object { $_.employment_status -eq 'inactive' }).Count
 $permanent = @($existing | Where-Object { $_.employment_type -eq 'Permanent' }).Count
 $partTime = @($existing | Where-Object { $_.employment_type -eq 'Part-Time' }).Count
+$whatsAppEnabled = @($existing | Where-Object { $_.whatsapp_number }).Count
 "Workbook employee rows with names: $sourceEmployeeCount"
 "Unique workbook IDs/names imported: $($incoming.Count)"
 "Existing records updated: $updated; new records added: $added"
 "Duplicate CSV rows merged by HR ID: $duplicateRowsMerged"
 "CSV total after merge: $($existing.Count); active: $active; inactive: $inactive"
 "Employment types: permanent=$permanent; part-time=$partTime"
+"Records with a verified mobile for WhatsApp: $whatsAppEnabled"
 "Extra A+ blood-group matches available: $($bloodGroups.Count)"
 if ($sourceConflicts.Count -gt 0) { "Source alternate-name spellings for duplicate HR IDs: $($sourceConflicts -join '; ') (saved as search aliases)" }
 if ($DryRun) { 'Dry run: CSV was not changed.'; exit 0 }

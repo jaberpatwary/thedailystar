@@ -2310,7 +2310,7 @@
       cardsHtml = '<div class="employee-grid">';
       data.employees.forEach(emp => {
         const initials = getInitials(emp.name);
-        const whatsAppURL = buildWhatsAppChatURL(emp.phone);
+        const whatsAppURL = buildWhatsAppChatURL(emp.whatsapp_number || emp.phone);
         const employmentLabels = [];
         if (emp.employment_status) {
           employmentLabels.push(emp.employment_status.charAt(0).toUpperCase() + emp.employment_status.slice(1));

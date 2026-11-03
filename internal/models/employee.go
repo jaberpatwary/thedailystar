@@ -26,6 +26,7 @@ type Employee struct {
 	Age                string    `json:"age,omitempty"`
 	Email              string    `json:"email"`
 	PersonalEmail      string    `json:"personal_email,omitempty"`
+	WhatsAppNumber     string    `json:"whatsapp_number,omitempty"` // direct contact link only; omitted from BuildText
 	Desk               string    `json:"desk"`
 	LinkedIn           string    `json:"linkedin"`
 	Twitter            string    `json:"twitter"`

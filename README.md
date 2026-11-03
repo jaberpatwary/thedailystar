@@ -94,8 +94,10 @@ or `list part-time employees` to search by type. `service log` is also accepted
 as a query for the source's service length.
 
 Employee cards include a `Chat on WhatsApp` button that opens a `wa.me` chat
-for the employee's listed phone number in a new tab. The button is disabled
-when the directory has no phone number for that employee.
+for the employee's verified mobile number in a new tab. The importer reads a
+valid mobile from HR's `Contact No.` field, normalizes it to the country-code
+format, and keeps it out of semantic LLM context. The button is disabled when
+no mobile number is listed.
 
 Remaining HR-backed directory learning checklist:
 
@@ -144,7 +146,7 @@ leaves your machine/server.
 
 Edit `data/employees.csv`. Required column: `name`. Optional columns:
 `designation`, `department`, `extension`, `email`, `desk`, `joining_date`,
-`blood_group`, `age`, `service_length`, `personal_email`, `employment_type`, `hr_id`,
+`blood_group`, `age`, `service_length`, `personal_email`, `whatsapp_number`, `employment_type`, `hr_id`,
 `name_aliases`, `designation_aliases`, `department_aliases`, `employment_status`,
 and `record_updated_at`. Add verified join dates, ages, service lengths, blood
 groups, personal email addresses, and record update dates from HR; blank fields
