@@ -16,6 +16,7 @@ type Employee struct {
 	Department         string    `json:"department"`
 	DepartmentAliases  []string  `json:"department_aliases,omitempty"`
 	EmploymentStatus   string    `json:"employment_status,omitempty"`
+	EmploymentType     string    `json:"employment_type,omitempty"`
 	RecordUpdatedAt    string    `json:"record_updated_at,omitempty"`
 	Extension          string    `json:"extension"`   // raw value from CSV
 	Phone              string    `json:"phone"`       // parsed phone number (if any)

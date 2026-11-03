@@ -64,6 +64,15 @@ function Normalize-Status([string]$Value) {
     return $value.ToLowerInvariant()
 }
 
+function Normalize-EmploymentType([string]$Value) {
+    $value = Clean-Value $Value
+    if ($value -match '(?i)^regular\b') { return 'Permanent' }
+    if ($value -match '(?i)part[ -]*timer') { return 'Part-Time' }
+    if ($value -match '(?i)\bintern(ship)?\b') { return 'Intern' }
+    if ($value -match '(?i)contract') { return 'Contractual' }
+    return $value
+}
+
 function Read-WorkbookRows([System.IO.Compression.ZipArchive]$Archive, [string]$SharedStringsPath = 'xl/sharedStrings.xml') {
     [xml]$book = Read-ZipEntry $Archive 'xl/workbook.xml'
     [xml]$relationships = Read-ZipEntry $Archive 'xl/_rels/workbook.xml.rels'
@@ -164,6 +173,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
     $values = $source.Values
     $status = Get-Field $values @('Status', 'Active/Inactive')
     $employmentStatus = Normalize-Status $status
+    $employmentType = Normalize-EmploymentType (Get-Field $values @('Employment Status'))
     $department = Get-Field $values @('Department')
     if ($source.Sheet -eq 'DC' -and $department -eq '') { $department = 'District Correspondent' }
     $officialEmail = Get-Field $values @('DS Mail')
@@ -196,6 +206,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
         service_length = Normalize-Period (Get-Field $values @('Service Length'))
         personal_email = $personalEmail
         name_aliases = ''
+        employment_type = $employmentType
         employment_status = $employmentStatus
     }
     if ($employee.blood_group -eq '' -and $source.HRID -ne '' -and $bloodGroups.ContainsKey($source.HRID.ToLowerInvariant())) { $employee.blood_group = $bloodGroups[$source.HRID.ToLowerInvariant()] }
@@ -224,7 +235,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
 $existing = @(Import-Csv -LiteralPath $CsvPath)
 if ($existing.Count -eq 0) { throw 'The CSV contains no employee rows.' }
 $csvHeaders = @($existing[0].PSObject.Properties.Name)
-foreach ($field in @('hr_id', 'age', 'service_length', 'personal_email')) {
+foreach ($field in @('hr_id', 'age', 'service_length', 'personal_email', 'employment_type')) {
     if ($csvHeaders -notcontains $field) { $csvHeaders += $field }
 }
 foreach ($row in $existing) {
@@ -296,7 +307,7 @@ foreach ($key in $incoming.Keys) {
         }
     }
 
-    foreach ($field in @('name', 'designation', 'department', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status')) {
+    foreach ($field in @('name', 'designation', 'department', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status', 'employment_type')) {
         if ([string]$source[$field] -ne '') { $target.$field = [string]$source[$field] }
     }
     if ($source.name_aliases -ne '') {
@@ -313,11 +324,14 @@ foreach ($key in $incoming.Keys) {
 
 $active = @($existing | Where-Object { $_.employment_status -eq 'active' }).Count
 $inactive = @($existing | Where-Object { $_.employment_status -eq 'inactive' }).Count
+$permanent = @($existing | Where-Object { $_.employment_type -eq 'Permanent' }).Count
+$partTime = @($existing | Where-Object { $_.employment_type -eq 'Part-Time' }).Count
 "Workbook employee rows with names: $sourceEmployeeCount"
 "Unique workbook IDs/names imported: $($incoming.Count)"
 "Existing records updated: $updated; new records added: $added"
 "Duplicate CSV rows merged by HR ID: $duplicateRowsMerged"
 "CSV total after merge: $($existing.Count); active: $active; inactive: $inactive"
+"Employment types: permanent=$permanent; part-time=$partTime"
 "Extra A+ blood-group matches available: $($bloodGroups.Count)"
 if ($sourceConflicts.Count -gt 0) { "Source alternate-name spellings for duplicate HR IDs: $($sourceConflicts -join '; ') (saved as search aliases)" }
 if ($DryRun) { 'Dry run: CSV was not changed.'; exit 0 }

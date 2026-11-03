@@ -236,7 +236,7 @@ func handleCasualChat(msg string, inBengali bool) (string, bool) {
 func isQuestion(q string) bool {
 	lower := strings.ToLower(q)
 	questionWords := []string{
-		"who", "what", "where", "how", "when", "which", "give", "tell", "show", "find", "age", "boyosh", "tenure", "service length", "how long", "how old", "how many years", "personal mail", "বয়স", "বয়স", "ব্যক্তিগত মেইল",
+		"who", "what", "where", "how", "when", "which", "give", "tell", "show", "find", "age", "boyosh", "tenure", "service length", "service log", "how long", "how old", "how many years", "personal mail", "employment status", "employment type", "job type", "part time", "permanent", "contractual", "বয়স", "বয়স", "ব্যক্তিগত মেইল",
 		"contact", "phone", "email", "mobile", "number", "desk", "location", "floor",
 		"ke", "ki", "kothay", "kake", "konta", "kobe", "koto", "er ", "tar", "or",
 		"dao", "daw", "bolun", "bolte", "janan", "dekhao", "khuje", "ache", "thake",
@@ -294,7 +294,11 @@ func requestedEmployeeAttribute(e models.Employee, query string, inBengali bool)
 	q := strings.ToLower(query)
 	attribute, value := "", ""
 	switch {
-	case strings.Contains(q, "service length") || strings.Contains(q, "length of service") || strings.Contains(q, "years of service") || strings.Contains(q, "work duration") || strings.Contains(q, "tenure") || strings.Contains(q, "how long") || strings.Contains(q, "how many days") || strings.Contains(q, "how many years") || strings.Contains(q, "koto din") || strings.Contains(q, "koto bochor") || strings.Contains(q, "chakri koto") || strings.Contains(q, "kormo jibon"):
+	case strings.Contains(q, "employment type") || strings.Contains(q, "job type"):
+		attribute, value = "employment type", e.EmploymentType
+	case strings.Contains(q, "employment status") || strings.Contains(q, "job status"):
+		attribute, value = "employment status", e.EmploymentStatus
+	case strings.Contains(q, "service length") || strings.Contains(q, "service log") || strings.Contains(q, "length of service") || strings.Contains(q, "years of service") || strings.Contains(q, "work duration") || strings.Contains(q, "tenure") || strings.Contains(q, "how long") || strings.Contains(q, "how many days") || strings.Contains(q, "how many years") || strings.Contains(q, "koto din") || strings.Contains(q, "koto bochor") || strings.Contains(q, "chakri koto") || strings.Contains(q, "kormo jibon"):
 		attribute, value = "service length", e.ServiceLength
 	case strings.Contains(q, "age") || strings.Contains(q, "how old") || strings.Contains(q, "boyosh") || strings.Contains(q, "বয়স") || strings.Contains(q, "বয়স"):
 		attribute, value = "age", e.Age
@@ -632,6 +636,12 @@ func buildEmployeeDetails(e models.Employee) string {
 	b.WriteString(fmt.Sprintf("Name: %s\n", e.Name))
 	b.WriteString(fmt.Sprintf("Designation: %s\n", e.Designation))
 	b.WriteString(fmt.Sprintf("Department: %s\n", e.Department))
+	if e.EmploymentStatus != "" {
+		b.WriteString(fmt.Sprintf("Employment Status: %s\n", e.EmploymentStatus))
+	}
+	if e.EmploymentType != "" {
+		b.WriteString(fmt.Sprintf("Employment Type: %s\n", e.EmploymentType))
+	}
 	if e.Email != "" {
 		b.WriteString(fmt.Sprintf("Email: %s\n", e.Email))
 	} else {

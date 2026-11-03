@@ -2291,6 +2291,18 @@
             </div>
             ${emp.department ? `<div class="emp-badge-dept">🏢 ${escapeHtml(emp.department)}</div>` : ''}
             <div class="emp-details">
+              ${emp.employment_status ? `
+                <div class="emp-row">
+                  <span>Employment Status</span>
+                  <span style="color:#cbd5e1;">${escapeHtml(emp.employment_status)}</span>
+                </div>
+              ` : ''}
+              ${emp.employment_type ? `
+                <div class="emp-row">
+                  <span>Employment Type</span>
+                  <span style="color:#cbd5e1;">${escapeHtml(emp.employment_type)}</span>
+                </div>
+              ` : ''}
               ${emp.email ? `
                 <div class="emp-row">
                   <span>✉️ Email</span>

@@ -88,6 +88,10 @@ provides them. They remain structured fields and are excluded from embedding
 text and semantic LLM context. Ask `Aasha age`, `Aasha personal mail`, or
 `Aasha service length`; `how long has Aasha worked` also resolves the HR-provided
 service length.
+Employment status and employment type are separate: ask `Aasha employment
+status` for Active/Inactive, `Aasha employment type` for Permanent/Part-Time,
+or `list part-time employees` to search by type. `service log` is also accepted
+as a query for the source's service length.
 
 Remaining HR-backed directory learning checklist:
 
@@ -136,7 +140,7 @@ leaves your machine/server.
 
 Edit `data/employees.csv`. Required column: `name`. Optional columns:
 `designation`, `department`, `extension`, `email`, `desk`, `joining_date`,
-`blood_group`, `age`, `service_length`, `personal_email`, `hr_id`,
+`blood_group`, `age`, `service_length`, `personal_email`, `employment_type`, `hr_id`,
 `name_aliases`, `designation_aliases`, `department_aliases`, `employment_status`,
 and `record_updated_at`. Add verified join dates, ages, service lengths, blood
 groups, personal email addresses, and record update dates from HR; blank fields
@@ -147,6 +151,8 @@ Optional `employment_status` (or `status`) accepts values such as `active`,
 `inactive`, `former`, `left`, `resigned`, `terminated`, or `retired`. Rows with
 an inactive status are excluded from the searchable directory; new or changed
 HR rows are picked up after the CSV reload.
+`employment_type` records categories such as `Permanent`, `Part-Time`, `Intern`,
+or `Contractual`; it does not replace the Active/Inactive `employment_status`.
 
 For verified alternate spellings or commonly used short forms, put aliases in
 the matching alias column separated by `|`. For example, `name_aliases` can

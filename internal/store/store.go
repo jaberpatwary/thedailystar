@@ -41,6 +41,7 @@ type DataQuality struct {
 	MissingAge             int `json:"missing_age"`
 	MissingServiceLength   int `json:"missing_service_length"`
 	MissingPersonalEmail   int `json:"missing_personal_email"`
+	MissingEmploymentType  int `json:"missing_employment_type"`
 	MissingBloodGroup      int `json:"missing_blood_group"`
 	DuplicateEmployeeIDs   int `json:"duplicate_employee_ids"`
 	InvalidJoiningDates    int `json:"invalid_joining_dates"`
@@ -236,6 +237,7 @@ func (s *Store) BuildFromCSV(csvPath string, client *ollama.Client) error {
 			Department:         get(row, "department"),
 			DepartmentAliases:  getAliases(row, "department_aliases"),
 			EmploymentStatus:   getFirst(row, "employment_status", "status"),
+			EmploymentType:     getFirst(row, "employment_type", "employment_category", "contract_type"),
 			RecordUpdatedAt:    getFirst(row, "record_updated_at", "updated_at", "last_updated_at"),
 			Extension:          get(row, "extension"),
 			EmployeeID:         getFirst(row, "hr_id", "employee_id", "staff_id"),
@@ -478,6 +480,42 @@ func employeeHeadDepartmentMatchesTerms(employee models.Employee, terms []string
 		}
 	}
 	return false
+}
+
+func employmentTypeFromQuery(query string) string {
+	normalized := " " + normalizeSearchTokens(query) + " "
+	switch {
+	case strings.Contains(normalized, " part time ") || strings.Contains(normalized, " part timer "):
+		return "Part-Time"
+	case containsWord(normalized, "permanent") || containsWord(normalized, "regular"):
+		return "Permanent"
+	case containsWord(normalized, "contractual") || containsWord(normalized, "contract"):
+		return "Contractual"
+	case containsWord(normalized, "intern") || containsWord(normalized, "internship"):
+		return "Intern"
+	default:
+		return ""
+	}
+}
+
+func employmentTypeNameTerms(query string) []string {
+	ignored := map[string]bool{
+		"permanent": true, "regular": true, "part": true, "time": true, "timer": true,
+		"contractual": true, "contract": true, "intern": true, "internship": true,
+		"employment": true, "type": true, "status": true, "job": true,
+		"employee": true, "employees": true, "staff": true, "worker": true, "workers": true,
+		"in": true, "at": true, "with": true, "from": true, "department": true, "team": true, "division": true,
+		"who": true, "is": true, "are": true, "the": true, "a": true, "an": true,
+		"all": true, "list": true, "show": true, "find": true, "tell": true,
+		"me": true, "of": true, "for": true, "please": true,
+	}
+	var terms []string
+	for _, term := range strings.Fields(normalizeSearchTokens(query)) {
+		if !ignored[term] {
+			terms = append(terms, term)
+		}
+	}
+	return terms
 }
 
 func wantsAllDepartmentHeads(query string) bool {
@@ -797,7 +835,7 @@ func (s *Store) FindByName(query string) []models.Employee {
 }
 
 // Search performs high-accuracy multi-field direct search against employee records.
-// It matches names, designations, departments, desks, emails, extensions, and phone numbers.
+// It matches names, designations, departments, employment types, desks, and contact fields.
 func (s *Store) Search(rawQuery string) ([]models.Employee, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -815,12 +853,13 @@ func (s *Store) Search(rawQuery string) ([]models.Employee, int) {
 		strings.Contains(rawLower, "age") || strings.Contains(rawLower, "boyosh") || strings.Contains(rawLower, "\u09ac\u09af\u09bc\u09b8") || strings.Contains(rawLower, "\u09ac\u09df\u09b8") || strings.Contains(rawLower, "tenure") ||
 		strings.Contains(rawLower, "service length") || strings.Contains(rawLower, "length of service") || strings.Contains(rawLower, "how long") ||
 		strings.Contains(rawLower, "personal email") || strings.Contains(rawLower, "personal mail") || strings.Contains(rawLower, "private email") ||
-		strings.Contains(rawLower, "koto din") || strings.Contains(rawLower, "koto bochor") || strings.Contains(rawLower, "chakri koto") || strings.Contains(rawLower, "kormo jibon") || strings.Contains(rawLower, "how many days") || strings.Contains(rawLower, "how many years")
+		strings.Contains(rawLower, "koto din") || strings.Contains(rawLower, "koto bochor") || strings.Contains(rawLower, "chakri koto") || strings.Contains(rawLower, "kormo jibon") || strings.Contains(rawLower, "how many days") || strings.Contains(rawLower, "how many years") ||
+		strings.Contains(rawLower, "employment type") || strings.Contains(rawLower, "employment status") || strings.Contains(rawLower, "job type") || strings.Contains(rawLower, "job status") || strings.Contains(rawLower, "service log")
 	personalEmailQuery := strings.Contains(rawLower, "personal email") || strings.Contains(rawLower, "personal mail") || strings.Contains(rawLower, "private email")
 	var terms []string
 	for _, t := range rawTerms {
 		t = normalizeSearchTerm(t)
-		if attributeQuery && (t == "join" || t == "joining" || t == "joined" || t == "date" || t == "tarikh" || t == "record" || t == "updated" || t == "update" || t == "last" || t == "age" || t == "boyosh" || t == "tenure" || t == "service" || t == "length" || t == "long" || t == "old" || t == "personal" || t == "private" || t == "mail" || t == "koto" || t == "din" || t == "bochor" || t == "chakri" || t == "job" || t == "hoyce" || t == "hoise" || t == "worked" || t == "working" || t == "many" || t == "days" || t == "years" || (personalEmailQuery && t == "email")) {
+		if attributeQuery && (t == "join" || t == "joining" || t == "joined" || t == "date" || t == "tarikh" || t == "record" || t == "updated" || t == "update" || t == "last" || t == "age" || t == "boyosh" || t == "tenure" || t == "service" || t == "length" || t == "log" || t == "long" || t == "old" || t == "personal" || t == "private" || t == "mail" || t == "koto" || t == "din" || t == "bochor" || t == "chakri" || t == "job" || t == "type" || t == "status" || t == "employment" || t == "hoyce" || t == "hoise" || t == "worked" || t == "working" || t == "many" || t == "days" || t == "years" || (personalEmailQuery && t == "email")) {
 			continue
 		}
 		if !stopWords[t] {
@@ -842,6 +881,23 @@ func (s *Store) Search(rawQuery string) ([]models.Employee, int) {
 		return nil, 0
 	}
 	queryText := strings.Join(terms, " ")
+	if employmentType := employmentTypeFromQuery(rawQuery); employmentType != "" {
+		nameTerms := employmentTypeNameTerms(rawQuery)
+		var matches []models.Employee
+		for _, employee := range s.Employees {
+			if !strings.EqualFold(strings.TrimSpace(employee.EmploymentType), employmentType) {
+				continue
+			}
+			if len(nameTerms) > 0 && !employeeNameMatchesTerms(employee, employeeHeadNameTerms(employee, nameTerms)) {
+				continue
+			}
+			matches = append(matches, employee)
+		}
+		if len(matches) > 0 {
+			return matches, 5000
+		}
+		return nil, 0
+	}
 	if initialsQuery(rawQuery) {
 		acronym := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(rawQuery), ".", ""))
 		isKnownAcronym := false
@@ -1695,6 +1751,9 @@ func (s *Store) DataQualityReport() DataQuality {
 		}
 		if strings.TrimSpace(employee.PersonalEmail) == "" {
 			result.MissingPersonalEmail++
+		}
+		if strings.TrimSpace(employee.EmploymentType) == "" {
+			result.MissingEmploymentType++
 		}
 		if strings.TrimSpace(employee.BloodGroup) == "" {
 			result.MissingBloodGroup++
