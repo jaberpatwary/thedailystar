@@ -1156,6 +1156,13 @@
       line-height: 1.3;
     }
 
+    .emp-status-inline {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
     .emp-names .desig {
       font-size: 12.5px;
       color: var(--gpt-green);
@@ -2304,12 +2311,18 @@
       data.employees.forEach(emp => {
         const initials = getInitials(emp.name);
         const whatsAppURL = buildWhatsAppChatURL(emp.phone);
+        const employmentLabels = [];
+        if (emp.employment_status) {
+          employmentLabels.push(emp.employment_status.charAt(0).toUpperCase() + emp.employment_status.slice(1));
+        }
+        if (emp.employment_type) employmentLabels.push(emp.employment_type);
+        const employmentLabel = employmentLabels.join(' · ');
         cardsHtml += `
           <div class="emp-card">
             <div class="emp-header">
               <div class="emp-avatar-circle">${initials}</div>
               <div class="emp-names">
-                <h4>${escapeHtml(emp.name)}</h4>
+                <h4>${escapeHtml(emp.name)}${employmentLabel ? ` <span class="emp-status-inline">(${escapeHtml(employmentLabel)})</span>` : ''}</h4>
                 <div class="desig">${escapeHtml(emp.designation || 'Staff')}</div>
               </div>
             </div>
