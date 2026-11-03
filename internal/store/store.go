@@ -38,6 +38,9 @@ type DataQuality struct {
 	MissingDesignation     int `json:"missing_designation"`
 	MissingDepartment      int `json:"missing_department"`
 	MissingJoiningDate     int `json:"missing_joining_date"`
+	MissingAge             int `json:"missing_age"`
+	MissingServiceLength   int `json:"missing_service_length"`
+	MissingPersonalEmail   int `json:"missing_personal_email"`
 	MissingBloodGroup      int `json:"missing_blood_group"`
 	DuplicateEmployeeIDs   int `json:"duplicate_employee_ids"`
 	InvalidJoiningDates    int `json:"invalid_joining_dates"`
@@ -76,7 +79,7 @@ func (s *Store) LoadJSON() (bool, error) {
 			e.NormalizeDirectoryFields(values)
 			e.SchemaVersion = 2 // keep rebuild pending for the current index format
 		}
-		if s.Employees[i].SchemaVersion < 4 {
+		if s.Employees[i].SchemaVersion < 5 {
 			enrichOrganizationFields(&s.Employees[i])
 			s.Employees[i].Text = s.Employees[i].BuildText()
 		}
@@ -97,7 +100,7 @@ func (s *Store) NeedsRebuild(csvPath string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, employee := range s.Employees {
-		if employee.SchemaVersion < 4 {
+		if employee.SchemaVersion < 5 {
 			return true
 		}
 	}
@@ -235,8 +238,12 @@ func (s *Store) BuildFromCSV(csvPath string, client *ollama.Client) error {
 			EmploymentStatus:   getFirst(row, "employment_status", "status"),
 			RecordUpdatedAt:    getFirst(row, "record_updated_at", "updated_at", "last_updated_at"),
 			Extension:          get(row, "extension"),
+			EmployeeID:         getFirst(row, "hr_id", "employee_id", "staff_id"),
 			JoiningDate:        getFirst(row, "joining_date", "join_date", "date_of_joining"),
+			ServiceLength:      getFirst(row, "service_length", "tenure", "years_of_service"),
+			Age:                get(row, "age"),
 			Email:              get(row, "email"),
+			PersonalEmail:      getFirst(row, "personal_email", "personal_mail", "private_email"),
 			Desk:               get(row, "desk"),
 			LinkedIn:           get(row, "linkedin"),
 			Twitter:            get(row, "twitter"),
@@ -804,11 +811,16 @@ func (s *Store) Search(rawQuery string) ([]models.Employee, int) {
 	rawTerms := strings.Fields(reNonAlpha.ReplaceAllString(cleaned, " "))
 	attributeQuery := strings.Contains(rawLower, "join date") || strings.Contains(rawLower, "joining date") ||
 		strings.Contains(rawLower, "date of joining") || strings.Contains(rawLower, "jogdaner tarikh") ||
-		strings.Contains(rawLower, "record updated") || strings.Contains(rawLower, "last updated") || strings.Contains(rawLower, "updated date")
+		strings.Contains(rawLower, "record updated") || strings.Contains(rawLower, "last updated") || strings.Contains(rawLower, "updated date") ||
+		strings.Contains(rawLower, "age") || strings.Contains(rawLower, "boyosh") || strings.Contains(rawLower, "\u09ac\u09af\u09bc\u09b8") || strings.Contains(rawLower, "\u09ac\u09df\u09b8") || strings.Contains(rawLower, "tenure") ||
+		strings.Contains(rawLower, "service length") || strings.Contains(rawLower, "length of service") || strings.Contains(rawLower, "how long") ||
+		strings.Contains(rawLower, "personal email") || strings.Contains(rawLower, "personal mail") || strings.Contains(rawLower, "private email") ||
+		strings.Contains(rawLower, "koto din") || strings.Contains(rawLower, "koto bochor") || strings.Contains(rawLower, "chakri koto") || strings.Contains(rawLower, "kormo jibon") || strings.Contains(rawLower, "how many days") || strings.Contains(rawLower, "how many years")
+	personalEmailQuery := strings.Contains(rawLower, "personal email") || strings.Contains(rawLower, "personal mail") || strings.Contains(rawLower, "private email")
 	var terms []string
 	for _, t := range rawTerms {
 		t = normalizeSearchTerm(t)
-		if attributeQuery && (t == "join" || t == "joining" || t == "joined" || t == "date" || t == "tarikh" || t == "record" || t == "updated" || t == "update" || t == "last") {
+		if attributeQuery && (t == "join" || t == "joining" || t == "joined" || t == "date" || t == "tarikh" || t == "record" || t == "updated" || t == "update" || t == "last" || t == "age" || t == "boyosh" || t == "tenure" || t == "service" || t == "length" || t == "long" || t == "old" || t == "personal" || t == "private" || t == "mail" || t == "koto" || t == "din" || t == "bochor" || t == "chakri" || t == "job" || t == "hoyce" || t == "hoise" || t == "worked" || t == "working" || t == "many" || t == "days" || t == "years" || (personalEmailQuery && t == "email")) {
 			continue
 		}
 		if !stopWords[t] {
@@ -1094,8 +1106,11 @@ func (s *Store) Search(rawQuery string) ([]models.Employee, int) {
 		desigLower := strings.ToLower(e.Designation)
 		deptLower := strings.ToLower(e.Department)
 		joiningDateLower := strings.ToLower(e.JoiningDate)
+		serviceLengthLower := strings.ToLower(e.ServiceLength)
+		ageLower := strings.ToLower(e.Age)
 		bloodGroupLower := strings.ToLower(e.BloodGroup)
 		emailLower := strings.ToLower(e.Email)
+		personalEmailLower := strings.ToLower(e.PersonalEmail)
 		deskLower := strings.ToLower(e.Desk)
 		extLower := strings.ToLower(e.Extension)
 
@@ -1105,9 +1120,12 @@ func (s *Store) Search(rawQuery string) ([]models.Employee, int) {
 				strings.Contains(desigLower, primaryTerm) ||
 				strings.Contains(deptLower, primaryTerm) ||
 				strings.Contains(joiningDateLower, primaryTerm) ||
+				strings.Contains(serviceLengthLower, primaryTerm) ||
+				strings.Contains(ageLower, primaryTerm) ||
 				strings.Contains(bloodGroupLower, primaryTerm) ||
 				strings.Contains(deskLower, primaryTerm) ||
 				strings.Contains(emailLower, primaryTerm) ||
+				strings.Contains(personalEmailLower, primaryTerm) ||
 				strings.Contains(extLower, primaryTerm)
 			if !hasPrimary {
 				continue
@@ -1668,6 +1686,15 @@ func (s *Store) DataQualityReport() DataQuality {
 			result.MissingJoiningDate++
 		} else if !validJoiningDate(employee.JoiningDate) {
 			result.InvalidJoiningDates++
+		}
+		if strings.TrimSpace(employee.Age) == "" {
+			result.MissingAge++
+		}
+		if strings.TrimSpace(employee.ServiceLength) == "" {
+			result.MissingServiceLength++
+		}
+		if strings.TrimSpace(employee.PersonalEmail) == "" {
+			result.MissingPersonalEmail++
 		}
 		if strings.TrimSpace(employee.BloodGroup) == "" {
 			result.MissingBloodGroup++

@@ -5,9 +5,11 @@ work-related directory info (designation, department, extension, email,
 desk). Falls back to AI-assisted search for broader questions like
 *"who is on the metro desk"*.
 
-**Cost: ৳0.** Everything runs locally — Go standard library only (no
-external Go packages), and Ollama for the AI model (no API key, no
-per-request charge). Your HR data never leaves your own server.
+**Cost: ৳0.** The Go app uses the standard library, and Ollama handles local
+embeddings. When Groq is configured, broader AI-assisted questions send the
+selected standard directory context to that provider. Direct lookups stay in
+the local directory; personal email, age, and service length are excluded from
+embedding and semantic LLM context.
 
 ## How it works
 
@@ -21,7 +23,7 @@ per-request charge). Your HR data never leaves your own server.
    when matching the actual CSV values. Results come from stored data —
    no AI guessing involved.
 4. When someone asks a broader **question**, the bot finds the most
-   relevant employee records by embedding similarity and asks the local
+   relevant employee records by embedding similarity and asks the configured
    LLM to answer using *only* those records as context.
 
 The employee directory is searched, not used to train the language model.
@@ -67,7 +69,8 @@ Examples of directory questions:
   department-only query returns the matching directory records with both fields.
 - `/api/health` includes aggregate data-quality counts for missing directory
   fields, invalid joining dates/blood groups/status values, duplicate names/IDs,
-  alias coverage, and the source CSV modification time; empty HR facts remain
+  alias coverage, age/service-length/personal-email coverage, and source CSV
+  modification time; empty HR facts remain
   explicitly unavailable rather than inferred.
 - Updating the CSV reuses embeddings for unchanged employee records and only
   asks Ollama to embed records whose searchable text has changed.
@@ -80,6 +83,12 @@ a no-match response rather than unrelated department staff.
 Queries can combine a head role, department, and a person's name, for example
 `head of HR Mahmud` narrows the HR heads to Md. Mahmudul Hasan Khan.
 
+Age, service length, and personal email are direct directory lookups when HR
+provides them. They remain structured fields and are excluded from embedding
+text and semantic LLM context. Ask `Aasha age`, `Aasha personal mail`, or
+`Aasha service length`; `how long has Aasha worked` also resolves the HR-provided
+service length.
+
 Remaining HR-backed directory learning checklist:
 
 - Add HR-approved alternate spellings, Banglish/transliterated names, and
@@ -89,9 +98,9 @@ Remaining HR-backed directory learning checklist:
   `In-Charge`, or other titles should count as a department's “Head”. The bot
   searches those titles by their actual designation and does not invent a
   reporting hierarchy.
-- Fill joining dates, blood groups, and record update dates from HR so direct
-  employee questions can return actual values. The current source workbook
-  does not contain these fields.
+- Fill any still-missing joining dates, ages, service lengths, blood groups,
+  personal email addresses, and record update dates from HR. Blank source cells
+  remain unavailable rather than inferred.
 - Mark current/former status in the source when HR wants former employees
   excluded; status filtering is ready, but blank status is not guessed.
 - Review duplicate names and incomplete/malformed source rows with HR. The bot
@@ -127,11 +136,13 @@ leaves your machine/server.
 
 Edit `data/employees.csv`. Required column: `name`. Optional columns:
 `designation`, `department`, `extension`, `email`, `desk`, `joining_date`,
-`blood_group`, `name_aliases`, `designation_aliases`, `department_aliases`,
-`employment_status`, and `record_updated_at`. Add verified join dates, blood
-groups, and record update dates from HR; blank fields
-are shown as not listed. Keep this to
-work-related fields only, as agreed with HR.
+`blood_group`, `age`, `service_length`, `personal_email`, `hr_id`,
+`name_aliases`, `designation_aliases`, `department_aliases`, `employment_status`,
+and `record_updated_at`. Add verified join dates, ages, service lengths, blood
+groups, personal email addresses, and record update dates from HR; blank fields
+are shown as not listed. Keep only fields specifically approved for this
+directory. Personal email, age, and service length are direct-lookup fields and
+are excluded from embedding text and semantic LLM context.
 Optional `employment_status` (or `status`) accepts values such as `active`,
 `inactive`, `former`, `left`, `resigned`, `terminated`, or `retired`. Rows with
 an inactive status are excluded from the searchable directory; new or changed
@@ -143,9 +154,23 @@ contain official alternate spellings/Banglish forms; title and department
 aliases work the same way. Search returns the employee's original HR name,
 designation, and department. Do not add guessed aliases or unsupported HR data.
 
+To import the three employee sheets from the Manpower General Info workbook,
+run the reusable importer below. It matches records by HR ID, stores the
+workbook-provided age/service length/personal email, keeps inactive rows in the
+CSV while excluding them from the active search index, and uses the workbook's
+`Sheet14` A+ list only to fill a missing A+ group by matching HR ID. Use
+`-DryRun` first to preview the merge counts.
+Remove `-DryRun` to apply the import.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\import_manpower.ps1 `
+  -Workbook 'C:\path\to\lDS Manpower General Info.xlsx' `
+  -CsvPath '.\data\employees.csv' -DryRun
+```
+
 ```csv
-name,designation,department,extension,email,desk,joining_date,blood_group,name_aliases,designation_aliases,department_aliases,employment_status,record_updated_at
-Rahim Uddin,Staff Reporter,Metro Desk,2101,rahim.uddin@example.com,3rd Floor,2020-04-12,O+,Rahim Uddin|Rahimuddin,Reporter,Metro,active,2026-10-26
+name,designation,department,extension,email,desk,joining_date,blood_group,age,service_length,personal_email,hr_id,name_aliases,designation_aliases,department_aliases,employment_status,record_updated_at
+Rahim Uddin,Staff Reporter,Metro Desk,2101,rahim.uddin@example.com,3rd Floor,2020-04-12,O+,"36 years, 2 months, 1 day","2 years, 8 months, 4 days",rahim.personal@example.com,1234,Rahim Uddin|Rahimuddin,Reporter,Metro,active,2026-10-26
 ```
 
 ## 3. Build and run

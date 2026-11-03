@@ -236,7 +236,7 @@ func handleCasualChat(msg string, inBengali bool) (string, bool) {
 func isQuestion(q string) bool {
 	lower := strings.ToLower(q)
 	questionWords := []string{
-		"who", "what", "where", "how", "when", "which", "give", "tell", "show", "find",
+		"who", "what", "where", "how", "when", "which", "give", "tell", "show", "find", "age", "boyosh", "tenure", "service length", "how long", "how old", "how many years", "personal mail", "বয়স", "বয়স", "ব্যক্তিগত মেইল",
 		"contact", "phone", "email", "mobile", "number", "desk", "location", "floor",
 		"ke", "ki", "kothay", "kake", "konta", "kobe", "koto", "er ", "tar", "or",
 		"dao", "daw", "bolun", "bolte", "janan", "dekhao", "khuje", "ache", "thake",
@@ -294,6 +294,12 @@ func requestedEmployeeAttribute(e models.Employee, query string, inBengali bool)
 	q := strings.ToLower(query)
 	attribute, value := "", ""
 	switch {
+	case strings.Contains(q, "service length") || strings.Contains(q, "length of service") || strings.Contains(q, "years of service") || strings.Contains(q, "work duration") || strings.Contains(q, "tenure") || strings.Contains(q, "how long") || strings.Contains(q, "how many days") || strings.Contains(q, "how many years") || strings.Contains(q, "koto din") || strings.Contains(q, "koto bochor") || strings.Contains(q, "chakri koto") || strings.Contains(q, "kormo jibon"):
+		attribute, value = "service length", e.ServiceLength
+	case strings.Contains(q, "age") || strings.Contains(q, "how old") || strings.Contains(q, "boyosh") || strings.Contains(q, "বয়স") || strings.Contains(q, "বয়স"):
+		attribute, value = "age", e.Age
+	case strings.Contains(q, "personal email") || strings.Contains(q, "personal mail") || strings.Contains(q, "private email") || strings.Contains(q, "ব্যক্তিগত ইমেইল") || strings.Contains(q, "ব্যক্তিগত মেইল"):
+		attribute, value = "personal email", e.PersonalEmail
 	case strings.Contains(q, "record updated") || strings.Contains(q, "last updated") || strings.Contains(q, "updated date") || strings.Contains(q, "last update date"):
 		attribute, value = "record updated date", e.RecordUpdatedAt
 	case strings.Contains(q, "blood group") || strings.Contains(q, "bloodgroup") || strings.Contains(q, "rokter group") || strings.Contains(q, "\u09b0\u0995\u09cd\u09a4\u09c7\u09b0 \u0997\u09cd\u09b0\u09c1\u09aa"):

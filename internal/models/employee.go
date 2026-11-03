@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// Employee holds the work-related directory info for one staff member.
-// Only official, work-related fields are stored here on purpose —
-// no personal phone numbers, home addresses, NID, etc.
+// Employee holds the employee-directory fields explicitly approved for this
+// local index. Personal phone numbers, home addresses, NID, and DOB are not stored.
 type Employee struct {
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
@@ -20,9 +19,12 @@ type Employee struct {
 	RecordUpdatedAt    string    `json:"record_updated_at,omitempty"`
 	Extension          string    `json:"extension"`   // raw value from CSV
 	Phone              string    `json:"phone"`       // parsed phone number (if any)
-	EmployeeID         string    `json:"employee_id"` // parsed numeric staff ID e.g. "1005"
+	EmployeeID         string    `json:"employee_id"` // HR ID, numeric or coded (e.g. "1005", "DC-5002")
 	JoiningDate        string    `json:"joining_date"`
+	ServiceLength      string    `json:"service_length,omitempty"`
+	Age                string    `json:"age,omitempty"`
 	Email              string    `json:"email"`
+	PersonalEmail      string    `json:"personal_email,omitempty"`
 	Desk               string    `json:"desk"`
 	LinkedIn           string    `json:"linkedin"`
 	Twitter            string    `json:"twitter"`
@@ -70,7 +72,13 @@ func (e *Employee) NormalizeDirectoryFields(values []string) {
 	}
 	if contact != "" {
 		e.Extension = contact
-		e.Phone, e.EmployeeID = ParseExtension(contact)
+		phone, employeeID := ParseExtension(contact)
+		if phone != "" {
+			e.Phone = phone
+		}
+		if employeeID != "" && e.EmployeeID == "" {
+			e.EmployeeID = employeeID
+		}
 	}
 	// Only expose actual URLs as social links; labels shifted from a CSV column are not links.
 	if !reHTTPURL.MatchString(e.LinkedIn) {
@@ -85,7 +93,7 @@ func (e *Employee) NormalizeDirectoryFields(values []string) {
 	if !reHTTPURL.MatchString(e.Instagram) {
 		e.Instagram = ""
 	}
-	e.SchemaVersion = 4
+	e.SchemaVersion = 5
 }
 
 // rePhone matches Bangladeshi mobile numbers: optional leading 0/+88, then 11 digits
@@ -93,7 +101,7 @@ func (e *Employee) NormalizeDirectoryFields(values []string) {
 var rePhone = regexp.MustCompile(`(?:(?:\+88|0088)?0?1[3-9][0-9]{8}|1[3-9][0-9]{8})`)
 
 // reEmpID matches (ID: 1234) or ID: 1234
-var reEmpID = regexp.MustCompile(`(?i)ID:\s*([0-9]+)`)
+var reEmpID = regexp.MustCompile(`(?i)ID:\s*((?:[A-Za-z]+-)?[0-9]+)\b`)
 
 // ParseExtension splits the raw extension CSV field into a clean Phone and EmployeeID.
 // Example inputs:

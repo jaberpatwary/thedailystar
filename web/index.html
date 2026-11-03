@@ -2339,6 +2339,27 @@
                 <span>🩸 Blood Group</span>
                 <span style="color:${emp.blood_group ? '#cbd5e1' : 'var(--text-dim)'};">${escapeHtml(emp.blood_group || 'Not listed')}</span>
               </div>
+              ${emp.age ? `
+                <div class="emp-row">
+                  <span>Age</span>
+                  <span style="color:#cbd5e1;">${escapeHtml(emp.age)}</span>
+                </div>
+              ` : ''}
+              ${emp.service_length ? `
+                <div class="emp-row">
+                  <span>Service Length</span>
+                  <span style="color:#cbd5e1;">${escapeHtml(emp.service_length)}</span>
+                </div>
+              ` : ''}
+              ${emp.personal_email ? `
+                <div class="emp-row">
+                  <span>Personal Email</span>
+                  <div>
+                    <a href="mailto:${escapeHtml(emp.personal_email)}">${escapeHtml(emp.personal_email)}</a>
+                    <button class="btn-copy-tiny" onclick="copyText(this, '${escapeHtml(emp.personal_email)}')">Copy</button>
+                  </div>
+                </div>
+              ` : ''}
               <div class="emp-row">
                 <span>HR Record Updated</span>
                 <span style="color:${emp.record_updated_at ? '#cbd5e1' : 'var(--text-dim)'};">${escapeHtml(emp.record_updated_at || 'Not listed')}</span>
