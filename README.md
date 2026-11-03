@@ -93,6 +93,10 @@ status` for Active/Inactive, `Aasha employment type` for Permanent/Part-Time,
 or `list part-time employees` to search by type. `service log` is also accepted
 as a query for the source's service length.
 
+Employee cards include a `Chat on WhatsApp` button that opens a `wa.me` chat
+for the employee's listed phone number in a new tab. The button is disabled
+when the directory has no phone number for that employee.
+
 Remaining HR-backed directory learning checklist:
 
 - Add HR-approved alternate spellings, Banglish/transliterated names, and

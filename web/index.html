@@ -1242,6 +1242,29 @@
     .instagram-btn { background: rgba(225,48,108,0.15); color: #f9a8d4; border-color: rgba(225,48,108,0.3); }
     .instagram-btn:hover { background: rgba(225,48,108,0.30); color: #fbcfe8; }
 
+    .whatsapp-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      width: 100%;
+      margin-top: 4px;
+      padding: 9px 12px;
+      border: 1px solid rgba(37, 211, 102, 0.42);
+      border-radius: 8px;
+      background: rgba(37, 211, 102, 0.14);
+      color: #86efac;
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .whatsapp-link:hover { background: rgba(37, 211, 102, 0.24); }
+    .whatsapp-link.disabled { color: var(--text-muted); border-color: var(--border-subtle); background: transparent; cursor: not-allowed; }
+
     /* Typing indicator */
     .typing-indicator {
       display: flex;
@@ -2280,6 +2303,7 @@
       cardsHtml = '<div class="employee-grid">';
       data.employees.forEach(emp => {
         const initials = getInitials(emp.name);
+        const whatsAppURL = buildWhatsAppChatURL(emp.phone);
         cardsHtml += `
           <div class="emp-card">
             <div class="emp-header">
@@ -2393,6 +2417,11 @@
                   </div>
                 </div>
               ` : ''}
+              ${whatsAppURL ? `
+                <a class="whatsapp-link" href="${escapeHtml(whatsAppURL)}" target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp chat with ${escapeHtml(emp.name)}">💬 Chat on WhatsApp</a>
+              ` : `
+                <button class="whatsapp-link disabled" type="button" disabled title="Employee phone number is not listed">WhatsApp number not listed</button>
+              `}
             </div>
           </div>
         `;
@@ -2718,6 +2747,21 @@
     return str.replace(/[&<>"']/g, function(m) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
     });
+  }
+
+  function buildWhatsAppChatURL(phone) {
+    let digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+
+    if (digits.startsWith('00880')) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith('0')) {
+      digits = '88' + digits.slice(1);
+    } else if (digits.length === 10 && digits.startsWith('1')) {
+      digits = '880' + digits;
+    }
+
+    return `https://wa.me/${digits}`;
   }
 
   // ================= DUAL ENGINE SWITCHING LOGIC =================
