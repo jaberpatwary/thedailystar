@@ -1,0 +1,5 @@
+2026/11/03 01:51:02 ready: 495 employees indexed
+2026/11/03 01:51:02 Daily Star staff-directory chatbot listening on 127.0.0.1:8085
+2026/11/03 01:51:02   AI Engine:  ⚡ Groq Cloud LPU (openai/gpt-oss-120b) [ACTIVE - Ultra Fast]
+2026/11/03 01:51:02   Fallback:   💻 Ollama http://localhost:11434 (llama3.2)
+2026/11/03 01:51:02   POST /api/reload to re-index after HR updates the CSV
