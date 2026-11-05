@@ -15,6 +15,8 @@ type Employee struct {
 	DesignationAliases []string  `json:"designation_aliases,omitempty"`
 	Department         string    `json:"department"`
 	DepartmentAliases  []string  `json:"department_aliases,omitempty"`
+	WorkStation        string    `json:"work_station,omitempty"`
+	Section            string    `json:"section,omitempty"`
 	EmploymentStatus   string    `json:"employment_status,omitempty"`
 	EmploymentType     string    `json:"employment_type,omitempty"`
 	RecordUpdatedAt    string    `json:"record_updated_at,omitempty"`
@@ -143,6 +145,12 @@ func (e *Employee) BuildText() string {
 		department = "Not specified in the source directory"
 	}
 	t := "Name: " + strings.TrimSpace(e.Name) + ". Designation / job title: " + designation + ". Department: " + department + "."
+	if workStation := strings.TrimSpace(e.WorkStation); workStation != "" {
+		t += " Work station: " + workStation + "."
+	}
+	if section := strings.TrimSpace(e.Section); section != "" {
+		t += " Section: " + section + "."
+	}
 	if len(e.NameAliases) > 0 {
 		t += " Also known as: " + strings.Join(e.NameAliases, ", ") + "."
 	}

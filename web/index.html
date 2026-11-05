@@ -2072,6 +2072,26 @@
     return conversations.find(c => c.id === currentChatId) || conversations[0];
   }
 
+  function accessTokenHeaders() {
+    const token = sessionStorage.getItem('staffDirectoryAccessToken');
+    return token ? { 'X-Access-Token': token } : {};
+  }
+
+  async function fetchWithDirectoryAccess(url, options) {
+    const headersFor = () => ({ ...(options.headers || {}), ...accessTokenHeaders() });
+    let response = await fetch(url, { ...options, headers: headersFor() });
+    if (response.status !== 401) return response;
+
+    const token = window.prompt('Enter your staff directory access token:');
+    if (!token) return response;
+    sessionStorage.setItem('staffDirectoryAccessToken', token.trim());
+    response = await fetch(url, { ...options, headers: headersFor() });
+    if (response.status === 401) {
+      sessionStorage.removeItem('staffDirectoryAccessToken');
+    }
+    return response;
+  }
+
   function deleteConversation(id, e) {
     if (e) e.stopPropagation();
     conversations = conversations.filter(c => c.id !== id);
@@ -2297,6 +2317,7 @@
   function appendBotTurnDOM(data) {
     const turn = document.createElement('div');
     turn.className = 'message-turn assistant';
+    turn.dataset.mode = data.mode || 'unknown';
 
     let modeHtml = '';
     if (data.mode === 'direct_lookup') {
@@ -2328,6 +2349,18 @@
             </div>
             ${emp.department ? `<div class="emp-badge-dept">🏢 ${escapeHtml(emp.department)}</div>` : ''}
             <div class="emp-details">
+              ${emp.work_station ? `
+                <div class="emp-row">
+                  <span>Work Station</span>
+                  <span style="color:#cbd5e1;">${escapeHtml(emp.work_station)}</span>
+                </div>
+              ` : ''}
+              ${emp.section ? `
+                <div class="emp-row">
+                  <span>Section</span>
+                  <span style="color:#cbd5e1;">${escapeHtml(emp.section)}</span>
+                </div>
+              ` : ''}
               ${emp.employment_status ? `
                 <div class="emp-row">
                   <span>Employment Status</span>
@@ -2345,7 +2378,7 @@
                   <span>✉️ Email</span>
                   <div>
                     <a href="mailto:${escapeHtml(emp.email)}">${escapeHtml(emp.email)}</a>
-                    <button class="btn-copy-tiny" onclick="copyText(this, '${escapeHtml(emp.email)}')">Copy</button>
+                    <button class="btn-copy-tiny" data-copy="${escapeHtml(emp.email)}" onclick="copyText(this)">Copy</button>
                   </div>
                 </div>
               ` : ''}
@@ -2354,7 +2387,7 @@
                   <span>📞 Phone</span>
                   <div>
                     <span style="color:#e2e8f0; font-weight:500;">${escapeHtml(emp.phone)}</span>
-                    <button class="btn-copy-tiny" onclick="copyText(this, '${escapeHtml(emp.phone)}')">Copy</button>
+                    <button class="btn-copy-tiny" data-copy="${escapeHtml(emp.phone)}" onclick="copyText(this)">Copy</button>
                   </div>
                 </div>
               ` : (emp.extension && !emp.extension.startsWith('ID:') ? `
@@ -2362,7 +2395,7 @@
                   <span>📞 Contact</span>
                   <div>
                     <span style="color:#e2e8f0; font-weight:500;">${escapeHtml(emp.extension)}</span>
-                    <button class="btn-copy-tiny" onclick="copyText(this, '${escapeHtml(emp.extension)}')">Copy</button>
+                    <button class="btn-copy-tiny" data-copy="${escapeHtml(emp.extension)}" onclick="copyText(this)">Copy</button>
                   </div>
                 </div>
               ` : `
@@ -2376,7 +2409,7 @@
                   <span>🆔 Staff ID</span>
                   <div>
                     <span style="color:#cbd5e1; font-weight:500;">${escapeHtml(emp.employee_id)}</span>
-                    <button class="btn-copy-tiny" onclick="copyText(this, '${escapeHtml(emp.employee_id)}')">Copy</button>
+                    <button class="btn-copy-tiny" data-copy="${escapeHtml(emp.employee_id)}" onclick="copyText(this)">Copy</button>
                   </div>
                 </div>
               ` : ''}
@@ -2405,7 +2438,7 @@
                   <span>Personal Email</span>
                   <div>
                     <a href="mailto:${escapeHtml(emp.personal_email)}">${escapeHtml(emp.personal_email)}</a>
-                    <button class="btn-copy-tiny" onclick="copyText(this, '${escapeHtml(emp.personal_email)}')">Copy</button>
+                    <button class="btn-copy-tiny" data-copy="${escapeHtml(emp.personal_email)}" onclick="copyText(this)">Copy</button>
                   </div>
                 </div>
               ` : ''}
@@ -2423,10 +2456,10 @@
                 <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
                   <div style="font-size:10.5px; color:var(--text-muted); margin-bottom:5px; font-weight:600; text-transform:uppercase;">Social Links</div>
                   <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    ${emp.linkedin ? `<a href="${escapeHtml(emp.linkedin)}" target="_blank" rel="noopener" class="social-btn linkedin-btn">💼 LinkedIn</a>` : ''}
-                    ${emp.twitter ? `<a href="${escapeHtml(emp.twitter)}" target="_blank" rel="noopener" class="social-btn twitter-btn">𝕏 Twitter</a>` : ''}
-                    ${emp.facebook ? `<a href="${escapeHtml(emp.facebook)}" target="_blank" rel="noopener" class="social-btn facebook-btn">📘 Facebook</a>` : ''}
-                    ${emp.instagram ? `<a href="${escapeHtml(emp.instagram)}" target="_blank" rel="noopener" class="social-btn instagram-btn">📸 Instagram</a>` : ''}
+                    ${safeExternalURL(emp.linkedin) ? `<a href="${escapeHtml(safeExternalURL(emp.linkedin))}" target="_blank" rel="noopener noreferrer" class="social-btn linkedin-btn">💼 LinkedIn</a>` : ''}
+                    ${safeExternalURL(emp.twitter) ? `<a href="${escapeHtml(safeExternalURL(emp.twitter))}" target="_blank" rel="noopener noreferrer" class="social-btn twitter-btn">𝕏 Twitter</a>` : ''}
+                    ${safeExternalURL(emp.facebook) ? `<a href="${escapeHtml(safeExternalURL(emp.facebook))}" target="_blank" rel="noopener noreferrer" class="social-btn facebook-btn">📘 Facebook</a>` : ''}
+                    ${safeExternalURL(emp.instagram) ? `<a href="${escapeHtml(safeExternalURL(emp.instagram))}" target="_blank" rel="noopener noreferrer" class="social-btn instagram-btn">📸 Instagram</a>` : ''}
                   </div>
                 </div>
               ` : ''}
@@ -2501,12 +2534,12 @@
               <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
             </svg>
           </button>
-          <button class="action-icon-btn" title="Good response" onclick="toggleThumb(this)">
+          <button class="action-icon-btn" data-feedback-rating="positive" title="Good response" onclick="submitFeedback(this, 'positive')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
             </svg>
           </button>
-          <button class="action-icon-btn" title="Bad response" onclick="toggleThumb(this)">
+          <button class="action-icon-btn" data-feedback-rating="negative" title="Bad response" onclick="submitFeedback(this, 'negative')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
             </svg>
@@ -2576,7 +2609,7 @@
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
-  function copyText(btn, text) {
+  function copyText(btn, text = btn.dataset.copy || '') {
     navigator.clipboard.writeText(text).then(() => {
       const orig = btn.textContent;
       btn.textContent = '✓ Copied!';
@@ -2614,8 +2647,26 @@
     }
   }
 
-  function toggleThumb(btn) {
-    btn.classList.toggle('active');
+  async function submitFeedback(btn, rating) {
+    const turn = btn.closest('.message-turn');
+    if (!turn || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetchWithDirectoryAccess('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating, mode: turn.dataset.mode || 'unknown' })
+      });
+      if (!res.ok) throw new Error('Feedback could not be saved');
+      turn.querySelectorAll('[data-feedback-rating]').forEach(button => {
+        button.disabled = true;
+        button.classList.toggle('active', button === btn);
+        button.title = button === btn ? 'Feedback saved' : button.title;
+      });
+    } catch (err) {
+      btn.disabled = false;
+      btn.title = err.message || 'Feedback could not be saved';
+    }
   }
 
   function regenerateLast() {
@@ -2655,7 +2706,7 @@
         content: m.content || m.answer || ''
       }));
 
-      const res = await fetch('/api/chat', {
+      const res = await fetchWithDirectoryAccess('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2679,7 +2730,7 @@
       removeTypingIndicator();
       const errorData = {
         role: 'assistant',
-        answer: '⚠️ Error reaching chatbot server: ' + err.message + '\nPlease check that the Go service is running on port 8085.',
+        answer: '⚠️ Error reaching chatbot server: ' + err.message + '\nPlease check that the chatbot service is running and reachable.',
         mode: ''
       };
       chat.messages.push(errorData);
@@ -2760,6 +2811,15 @@
     return str.replace(/[&<>"']/g, function(m) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
     });
+  }
+
+  function safeExternalURL(value) {
+    try {
+      const url = new URL(String(value || ''), window.location.origin);
+      return url.protocol === 'https:' ? url.href : '';
+    } catch (e) {
+      return '';
+    }
   }
 
   function buildWhatsAppChatURL(phone) {

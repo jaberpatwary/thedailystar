@@ -3,3 +3,8 @@
 *.exe~
 data/*.csv
 data/employees_index.json
+data/knowledge_index.json
+data/feedback.jsonl
+data/knowledge/*
+!data/knowledge/.gitkeep
+!data/knowledge/reporting_hierarchy_template.csv

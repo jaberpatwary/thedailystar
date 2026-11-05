@@ -62,13 +62,17 @@ Examples of directory questions:
 - `all types of editors`, `all editor roles`, or `sob rokom editor` deliberately
   includes Joint Editors, Sub-Editors, and other editor titles; a plain `editor`
   query stays limited to the exact Editor category.
+- `how many editors in The Daily Star?` counts every indexed designation with
+  the word Editor, including compound titles, and does not treat the company
+  name as a department.
 - Uppercase initials such as `RR` can find employees by first/last-name initials;
   common title abbreviations such as `Sr.` and `Asst.` normalize to their full
   forms. Acronyms such as `CBO` are matched from the title before its comma.
 - A role plus department is treated as an intersection, while a role-only or
   department-only query returns the matching directory records with both fields.
 - `/api/health` includes aggregate data-quality counts for missing directory
-  fields, invalid joining dates/blood groups/status values, duplicate names/IDs,
+  fields including missing employment status, invalid joining dates/blood
+  groups/status values, duplicate names/IDs,
   alias coverage, age/service-length/personal-email coverage, and source CSV
   modification time; empty HR facts remain
   explicitly unavailable rather than inferred.
@@ -82,6 +86,13 @@ lists all records with a head title; departments without a verified head return
 a no-match response rather than unrelated department staff.
 Queries can combine a head role, department, and a person's name, for example
 `head of HR Mahmud` narrows the HR heads to Md. Mahmudul Hasan Khan.
+
+Approved company documents can also be indexed separately from employee rows.
+Put Markdown, text, or header-based CSV files under `data/knowledge/`; answers
+grounded in those files use local Ollama chat and cite the source. See
+[`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) for source approval,
+formatting, refresh, privacy, and evaluation guidance. The reporting hierarchy
+CSV in that folder is an empty template, not verified company data.
 
 Age, service length, and personal email are direct directory lookups when HR
 provides them. They remain structured fields and are excluded from embedding
@@ -120,6 +131,11 @@ Remaining HR-backed directory learning checklist:
 - After approved HR changes, reload the CSV and manually verify head queries,
   title-plus-department filters, typo queries, duplicate-name disambiguation,
   and employee attribute lookups against the source.
+- Generate an HR review queue for missing fields on every row not explicitly
+  marked inactive with
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\export_hr_gaps.ps1`.
+  The report lists employee ID/name and missing field names only; HR must fill
+  it from an authoritative source before re-importing.
 
 For a manual directory review after HR changes, check queries such as `Who is
 head of IT?`, `head of HR`, `Who is in charge of Star Bangla?`, `all types of
@@ -220,6 +236,9 @@ curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" http://127.0.0.1:8080/api/reload
 | `CHAT_MODEL`   | `llama3.1`                     | Local fallback chat model                                    |
 | `CSV_PATH`     | `data/employees.csv`           | Source HR file                                               |
 | `DB_PATH`      | `data/employees_index.json`    | Cached index file                                            |
+| `KNOWLEDGE_DIR` | `data/knowledge`              | Approved policy/FAQ document sources                        |
+| `KNOWLEDGE_INDEX_PATH` | `data/knowledge_index.json` | Cached document embeddings                                  |
+| `FEEDBACK_PATH` | `data/feedback.jsonl` | Private, content-free response ratings                      |
 | `PORT`         | `8080`                         | HTTP port                                                    |
 | `HOST`         | `127.0.0.1`                    | Bind address; local-only by default                          |
 | `ACCESS_TOKEN` | *(empty)*                      | Required `X-Access-Token` when exposing the service remotely |
@@ -235,6 +254,18 @@ curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" http://127.0.0.1:8080/api/reload
 - A Groq key entered through the browser is held only for the current process;
   use a protected server environment variable if it must persist after restart.
 - Keep `.env`, the CSV, and the generated index out of source control.
+- The access token is shared by all users; the current app has no per-role
+  authorization for fields such as phone, personal email, age, or blood group.
+  Before wider rollout, HR/data owners must approve which staff may see each
+  field. Do not expose personal or medical fields to an audience HR has not
+  approved.
+- User feedback records contain only timestamp, rating, and response mode; they
+  deliberately omit the question and answer. Review and remove old entries
+  from `data/feedback.jsonl` under the organization's retention policy.
+- Approved knowledge documents are indexed locally and are not sent to Groq;
+  use only reviewed sources and keep the knowledge folder access-controlled.
+- For public deployment, set both `ACCESS_TOKEN` and `ADMIN_TOKEN`; remote
+  binding is rejected if either is missing. Use HTTPS at the deployment edge.
 
 ### ⚡ Ultra-Fast Groq Cloud LPU Integration (100% Free)
 
@@ -282,10 +313,36 @@ sudo systemctl enable --now staffbot
 
 ## Privacy notes
 
-- Only work-related fields are stored by design (no phone numbers, home
-  addresses, or national ID numbers) — keep it that way unless HR/legal
-  explicitly signs off on storing more.
-- Because Ollama runs locally, no employee data is sent to any outside
-  company or API.
+- Only HR-approved work-related fields should be stored. This importer handles work contact numbers and selected profile fields; do not add home addresses, national ID numbers, payroll data, or other restricted fields without explicit HR/legal approval.
+- Directory records are not sent to Groq. General-chat prompts are sent to
+  Groq when that provider is enabled; users should not include employee
+  personal data in general questions.
 - Access to this tool should still be restricted to your office network
   or behind company login, since it is still a lookup of staff data.
+
+## Review templates and feedback
+
+- `data/evaluation/qa_cases.csv` is a manually reviewable set of English,
+  Bengali, and Banglish examples for exact names, typos, duplicate names,
+  attribute follow-ups, missing values, and complete seniority-ordered rosters.
+  Expected behaviors describe acceptance criteria; a reviewer and review date
+  must be filled before a case is treated as HR-approved.
+- `data/templates/alias_review_template.csv` is for HR-verified name,
+  designation, and department spellings. Do not guess Bengali/Banglish
+  transliterations; after approval, merge them into the matching `*_aliases`
+  CSV field, separated by `|`.
+- `data/templates/seniority_order_template.csv` records approved role ranks.
+  Current roster order uses title-based defaults and service date as a
+  tie-breaker; it is not a substitute for an approved reporting chart. Use
+  `data/knowledge/reporting_hierarchy_template.csv` for reports-to and
+  acting-head relationships.
+- Thumbs-up/down feedback is saved to `FEEDBACK_PATH` without query/answer
+  content. Restrict the file to administrators and apply the HR retention
+  schedule. Feedback is a review queue, not an automatic source-data change.
+- The manpower importer's `-MissingOnly -DryRun` mode reports potential fills
+  without changing the CSV. Apply only HR-approved values, then reload and
+  compare `/api/health` counts with the authoritative source.
+- Create a data backup outside the workspace by passing an administrator-only
+  directory to `scripts/backup_data.ps1`. Store the archive encrypted, apply
+  the organization's retention schedule, and rehearse restoring it before
+  relying on it for production recovery.

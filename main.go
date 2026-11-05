@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"dailystar-chatbot/internal/groq"
+	"dailystar-chatbot/internal/knowledge"
 	"dailystar-chatbot/internal/ollama"
 	"dailystar-chatbot/internal/server"
 	"dailystar-chatbot/internal/store"
@@ -56,6 +57,8 @@ func main() {
 	chatModel := getenv("CHAT_MODEL", "llama3.1")
 	csvPath := getenv("CSV_PATH", "data/employees.csv")
 	dbPath := getenv("DB_PATH", "data/employees_index.json")
+	knowledgeDir := getenv("KNOWLEDGE_DIR", "data/knowledge")
+	knowledgeIndexPath := getenv("KNOWLEDGE_INDEX_PATH", "data/knowledge_index.json")
 	port := getenv("PORT", "8080")
 	host := getenv("HOST", "127.0.0.1")
 	accessToken := getenv("ACCESS_TOKEN", "")
@@ -88,15 +91,37 @@ func main() {
 	}
 	log.Printf("ready: %d employees indexed", st.Count())
 
+	kb := knowledge.New(knowledgeDir, knowledgeIndexPath)
+	if err := kb.Load(); err != nil {
+		log.Printf("knowledge cache could not be loaded: %v", err)
+	}
+	if client.IsAvailable() {
+		if err := kb.Sync(client); err != nil {
+			kb.Clear()
+			log.Printf("knowledge sources could not be refreshed; disabled cached documents to avoid stale answers: %v", err)
+		}
+	} else {
+		if err := kb.Sync(nil); err != nil {
+			kb.Clear()
+			log.Printf("knowledge sources changed but Ollama is unavailable; disabled stale cached documents: %v", err)
+		} else {
+			log.Printf("Ollama unavailable; serving %d unchanged cached knowledge chunks", kb.Count())
+		}
+	}
+	log.Printf("ready: %d approved knowledge chunks indexed", kb.Count())
+
 	webSub, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatalf("failed to load embedded web assets: %v", err)
 	}
 
-	if host != "127.0.0.1" && host != "localhost" && host != "::1" && accessToken == "" {
-		log.Fatal("ACCESS_TOKEN must be set when HOST is not a loopback address")
+	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		if accessToken == "" || adminToken == "" {
+			log.Fatal("ACCESS_TOKEN and ADMIN_TOKEN must be set when HOST is not a loopback address")
+		}
 	}
 	srv := server.New(st, client, grClient, csvPath, envPath, webSub, accessToken, adminToken)
+	srv.SetKnowledge(kb)
 
 	log.Printf("Daily Star staff-directory chatbot listening on %s:%s", host, port)
 	if grClient.IsConfigured() {
@@ -112,7 +137,7 @@ func main() {
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       20 * time.Second,
-		WriteTimeout:      90 * time.Second,
+		WriteTimeout:      240 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 	if err := httpServer.ListenAndServe(); err != nil {

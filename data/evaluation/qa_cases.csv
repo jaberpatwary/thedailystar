@@ -1,0 +1,10 @@
+question,language,expected_answer,source_document,expected_behavior,reviewer,reviewed_at
+I need full info about Mahfuz Anam,English,Mahfuz Anam's single directory record only,data/employees.csv,Return one exact employee profile and no fuzzy unrelated people,,
+who is edior and publisar in here,English,Mahfuz Anam — Editor & Publisher,data/employees.csv,Require both role words in one person's designation despite minor typos,,
+Tanvir er phone number,Banglish,The matching Tanvir records with disambiguators,data/employees.csv,If first name is shared show only the matching candidates and identify each by department or Staff ID,,
+or rokter grop dow after asking Tanvir er phone number,Banglish,Blood group field for the same Tanvir candidates,data/employees.csv,Resolve the pronoun from conversation context and return only the requested field for all candidates,,
+oder after asking for their blood group,Banglish,Blood group field for the previously matched candidates,data/employees.csv,Preserve plural references and inherit the last requested employee field,,
+full team list of crime,English,All active members in Crime and nested Crime - Home sections,data/employees.csv,Return the complete roster in seniority order with the head first,,
+Mahfuz Anam phone number,English,Phone number is not listed in the directory,data/employees.csv,State missing values explicitly and do not infer or substitute another employee,,
+A+ blood group,Banglish,All records whose blood group is A+,data/employees.csv,Use exact structured-field matching and return each matching employee,,
+blood group,English,Ask for an employee name or Staff ID,none,Do not search broadly or guess a person when the requested attribute has no target,,

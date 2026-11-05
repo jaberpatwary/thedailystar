@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Workbook,
     [Parameter(Mandatory = $true)][string]$CsvPath,
+    [switch]$MissingOnly,
     [switch]$DryRun
 )
 
@@ -59,8 +60,9 @@ function Normalize-Period([string]$Value) {
 
 function Normalize-Status([string]$Value) {
     $value = Clean-Value $Value
+    if ($value -eq '') { return '' }
     if ($value -match '(?i)in[ -]*active|former|resign|retir|terminat|separat|left') { return 'inactive' }
-    if ($value -eq '' -or $value -match '(?i)^active($|\s*-)|^DC$') { return 'active' }
+    if ($value -match '(?i)^active($|\s*-)|^DC$') { return 'active' }
     return $value.ToLowerInvariant()
 }
 
@@ -164,6 +166,16 @@ function Normalize-NameKey([string]$Name) {
     return [regex]::Replace(($Name.ToLowerInvariant()), '[^a-z0-9]+', ' ').Trim()
 }
 
+function Merge-NameAliases([string]$Existing, [string[]]$Additional) {
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $aliases = [System.Collections.Generic.List[string]]::new()
+    foreach ($value in @(([string]$Existing -split '\|') + $Additional)) {
+        $clean = [regex]::Replace((Clean-Value ([string]$value)), '\s+', ' ').Trim()
+        if ($clean -ne '' -and $seen.Add($clean)) { $aliases.Add($clean) }
+    }
+    return [string]::Join('|', $aliases)
+}
+
 if (!(Test-Path -LiteralPath $Workbook)) { throw "Workbook not found: $Workbook" }
 if (!(Test-Path -LiteralPath $CsvPath)) { throw "CSV not found: $CsvPath" }
 
@@ -204,12 +216,20 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
         $floor = "$number$suffix Floor"
     } elseif ($floor -and $floor -notmatch '(?i)floor$') { $floor = "$floor Floor" }
 
+    $whatsAppNumber = Normalize-WhatsAppNumber (Get-Field $values @('Contact No.', 'Mobile', 'Phone'))
+    $localPhone = if ($whatsAppNumber -match '^8801') { '0' + $whatsAppNumber.Substring(3) } else { '' }
+    $extension = if ($source.HRID -ne '') { "ID: $($source.HRID)" } else { '' }
+    if ($localPhone -ne '') {
+        $extension = if ($source.HRID -ne '') { "$localPhone (ID: $($source.HRID))" } else { $localPhone }
+    }
     $employee = [ordered]@{
         hr_id = $source.HRID
         name = $source.Name
         designation = Get-Field $values @('Designation')
         department = $department
-        extension = "ID: $($source.HRID)"
+        work_station = Get-Field $values @('Work Station', 'Workstation')
+        section = Get-Field $values @('Section')
+        extension = $extension
         email = $officialEmail
         desk = $floor
         joining_date = Normalize-ExcelDate (Get-Field $values @('Joining Date'))
@@ -217,7 +237,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
         age = Normalize-Period (Get-Field $values @('Age'))
         service_length = Normalize-Period (Get-Field $values @('Service Length'))
         personal_email = $personalEmail
-        whatsapp_number = Normalize-WhatsAppNumber (Get-Field $values @('Contact No.', 'Mobile', 'Phone'))
+        whatsapp_number = $whatsAppNumber
         name_aliases = ''
         employment_type = $employmentType
         employment_status = $employmentStatus
@@ -231,8 +251,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
         $previous = $incoming[$key]
         if ((Normalize-NameKey $previous.name) -ne (Normalize-NameKey $employee.name)) {
             $sourceConflicts += "$($source.HRID): '$($previous.name)' / '$($employee.name)'"
-            $aliases = @(([string]$previous.name_aliases -split '\|' | Where-Object { $_ -ne '' }) + $employee.name)
-            $previous.name_aliases = (($aliases | Select-Object -Unique) -join '|')
+            $previous.name_aliases = Merge-NameAliases ([string]$previous.name_aliases) @([string]$employee.name)
             if ($previous.employment_status -eq 'inactive' -and $employee.employment_status -eq 'active') {
                 $keptAliases = $previous.name_aliases
                 foreach ($field in $employee.Keys) { $previous[$field] = $employee[$field] }
@@ -248,7 +267,7 @@ foreach ($source in $sourceRows | Where-Object { $_.Sheet -in @('Master File', '
 $existing = @(Import-Csv -LiteralPath $CsvPath)
 if ($existing.Count -eq 0) { throw 'The CSV contains no employee rows.' }
 $csvHeaders = @($existing[0].PSObject.Properties.Name)
-foreach ($field in @('hr_id', 'age', 'service_length', 'personal_email', 'employment_type', 'whatsapp_number')) {
+foreach ($field in @('hr_id', 'age', 'service_length', 'personal_email', 'employment_type', 'whatsapp_number', 'work_station', 'section')) {
     if ($csvHeaders -notcontains $field) { $csvHeaders += $field }
 }
 foreach ($row in $existing) {
@@ -274,8 +293,7 @@ foreach ($row in $existing) {
     if ($idKey -ne '' -and $existingById.ContainsKey($idKey)) {
         $target = $existingById[$idKey]
         if ((Normalize-NameKey $target.name) -ne (Normalize-NameKey $row.name) -and $row.name) {
-            $aliases = @(([string]$target.name_aliases -split '\|' | Where-Object { $_ -ne '' }) + [string]$row.name)
-            $target.name_aliases = (($aliases | Select-Object -Unique) -join '|')
+            $target.name_aliases = Merge-NameAliases ([string]$target.name_aliases) @([string]$row.name)
         }
         foreach ($field in $csvHeaders) {
             if ([string]$target.$field -eq '' -and [string]$row.$field -ne '') { $target.$field = [string]$row.$field }
@@ -300,12 +318,23 @@ foreach ($row in $existing) {
 
 $added = 0
 $updated = 0
+$unmatched = 0
+$phoneFilled = 0
+$bloodGroupFilled = 0
+$workStationFilled = 0
+$sectionFilled = 0
+$missingOnlyFilled = @{}
+$missingOnlyFields = @('designation', 'department', 'work_station', 'section', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status', 'employment_type')
+foreach ($field in $missingOnlyFields) { $missingOnlyFilled[$field] = 0 }
+$workbookPhoneValues = @($incoming.Values | Where-Object { $_.whatsapp_number }).Count
+$workbookBloodGroupValues = @($incoming.Values | Where-Object { $_.blood_group }).Count
 foreach ($key in $incoming.Keys) {
     $source = $incoming[$key]
     $target = $null
     if ($source.hr_id -and $byId.ContainsKey($source.hr_id.ToLowerInvariant())) { $target = $byId[$source.hr_id.ToLowerInvariant()] }
     elseif (!$source.hr_id -and $byName.ContainsKey((Normalize-NameKey $source.name))) { $target = $byName[(Normalize-NameKey $source.name)] }
     if ($null -eq $target) {
+        if ($MissingOnly) { $unmatched++; continue }
         $target = [pscustomobject]@{}
         foreach ($field in $csvHeaders) { $target | Add-Member -NotePropertyName $field -NotePropertyValue '' }
         $target.name = $source.name
@@ -315,21 +344,44 @@ foreach ($key in $incoming.Keys) {
     } else {
         $updated++
         if ((Normalize-NameKey $target.name) -ne (Normalize-NameKey $source.name)) {
-            $oldNameAliases = @(([string]$source.name_aliases -split '\|' | Where-Object { $_ -ne '' }) + [string]$target.name)
-            $source.name_aliases = (($oldNameAliases | Select-Object -Unique) -join '|')
+            $source.name_aliases = Merge-NameAliases ([string]$source.name_aliases) @([string]$target.name)
         }
     }
 
-    foreach ($field in @('name', 'designation', 'department', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status', 'employment_type', 'whatsapp_number')) {
-        if ([string]$source[$field] -ne '') { $target.$field = [string]$source[$field] }
+    if ($MissingOnly) {
+        if ($source.whatsapp_number -ne '') {
+            $phoneUpdated = $false
+            if ((Clean-Value ([string]$target.whatsapp_number)) -eq '') {
+                $target.whatsapp_number = [string]$source.whatsapp_number
+                $phoneUpdated = $true
+            }
+            if ((Normalize-WhatsAppNumber ([string]$target.extension)) -eq '' -and
+                (Normalize-WhatsAppNumber ([string]$source.extension)) -ne '') {
+                $target.extension = [string]$source.extension
+                $phoneUpdated = $true
+            }
+            if ($phoneUpdated) { $phoneFilled++ }
+        }
+        foreach ($field in $missingOnlyFields) {
+            if ((Clean-Value ([string]$target.$field)) -eq '' -and (Clean-Value ([string]$source[$field])) -ne '') {
+                $target.$field = [string]$source[$field]
+                $missingOnlyFilled[$field]++
+                if ($field -eq 'blood_group') { $bloodGroupFilled++ }
+                if ($field -eq 'work_station') { $workStationFilled++ }
+                if ($field -eq 'section') { $sectionFilled++ }
+            }
+        }
+    } else {
+        foreach ($field in @('name', 'designation', 'department', 'work_station', 'section', 'email', 'desk', 'joining_date', 'blood_group', 'age', 'service_length', 'personal_email', 'employment_status', 'employment_type', 'whatsapp_number')) {
+            if ([string]$source[$field] -ne '') { $target.$field = [string]$source[$field] }
+        }
     }
     if ($source.name_aliases -ne '') {
-        $allAliases = @(([string]$target.name_aliases -split '\|' | Where-Object { $_ -ne '' }) + ([string]$source.name_aliases -split '\|' | Where-Object { $_ -ne '' }))
-        $target.name_aliases = (($allAliases | Select-Object -Unique) -join '|')
+        $target.name_aliases = Merge-NameAliases ([string]$target.name_aliases) @([string]$source.name_aliases -split '\|' | Where-Object { $_ -ne '' })
     }
     if ($source.hr_id -ne '') {
         $target.hr_id = $source.hr_id
-        if ($target.extension -notmatch '(?i)ID:\s*((?:[A-Za-z]+-)?[0-9]+)\b') { $target.extension = $source.extension }
+        if (!$MissingOnly -and $target.extension -notmatch '(?i)ID:\s*((?:[A-Za-z]+-)?[0-9]+)\b') { $target.extension = $source.extension }
         $byId[$source.hr_id.ToLowerInvariant()] = $target
     }
     $byName[(Normalize-NameKey $source.name)] = $target
@@ -343,6 +395,11 @@ $whatsAppEnabled = @($existing | Where-Object { $_.whatsapp_number }).Count
 "Workbook employee rows with names: $sourceEmployeeCount"
 "Unique workbook IDs/names imported: $($incoming.Count)"
 "Existing records updated: $updated; new records added: $added"
+if ($MissingOnly) {
+    "Workbook phone values: $workbookPhoneValues; missing phone details filled: $phoneFilled; workbook blood-group values: $workbookBloodGroupValues; missing blood groups filled: $bloodGroupFilled; work stations filled: $workStationFilled; sections filled: $sectionFilled; workbook IDs not in CSV: $unmatched"
+    $fillSummary = @($missingOnlyFilled.GetEnumerator() | Sort-Object Name | ForEach-Object { $_.Name + '=' + $_.Value }) -join ', '
+    "Missing-only field fills: $fillSummary"
+}
 "Duplicate CSV rows merged by HR ID: $duplicateRowsMerged"
 "CSV total after merge: $($existing.Count); active: $active; inactive: $inactive"
 "Employment types: permanent=$permanent; part-time=$partTime"
